@@ -21,6 +21,7 @@ import {
   Heart, Beaker, Monitor, ChevronDown, ChevronUp
 } from 'lucide-react'
 import type { Patient } from '@/lib/types'
+import { transcribeAudio } from '@/lib/transcription'
 
 interface TumorBoardWorkspaceProps {
   patient: Patient
@@ -68,6 +69,10 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [presentationMode, setPresentationMode] = useState(false)
   const [chatInput, setChatInput] = useState("")
+  const [isRecording, setIsRecording] = useState(false)
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
+  const [transcription, setTranscription] = useState<string | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
   const [currentView, setCurrentView] = useState("CASE OVERVIEW")
   const [showDecisionPad, setShowDecisionPad] = useState(false)
   const [messages, setMessages] = useState<Message[]>([
@@ -354,6 +359,37 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
       )
     }
   ]
+
+  const handleStartRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      setMediaRecorder(recorder)
+      audioChunksRef.current = []
+      recorder.ondataavailable = (event) => {
+        audioChunksRef.current.push(event.data)
+      }
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        const transcribedText = await transcribeAudio(audioBlob)
+        if (transcribedText) {
+          setTranscription(transcribedText)
+          setChatInput((prev) => prev + transcribedText)
+        }
+      }
+      recorder.start()
+      setIsRecording(true)
+    } catch (error) {
+      console.error("Error starting recording:", error)
+    }
+  }
+
+  const handleStopRecording = () => {
+    if (mediaRecorder) {
+      mediaRecorder.stop()
+      setIsRecording(false)
+    }
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -666,8 +702,13 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
               }}
             />
             <div className="flex flex-col gap-1">
-              <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                <Mic className="w-3 h-3 text-white/70" />
+              <Button
+                size="sm"
+                variant="ghost"
+                className={`h-8 w-8 p-0 ${isRecording ? 'text-red-500' : 'text-white/70'}`}
+                onClick={isRecording ? handleStopRecording : handleStartRecording}
+              >
+                <Mic className="w-3 h-3" />
               </Button>
               <Button size="sm" onClick={handleSendMessage} className="h-8 w-8 p-0 bg-[#4a6bff] hover:bg-[#3a5bef]">
                 <Send className="w-3 h-3" />
