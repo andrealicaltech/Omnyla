@@ -18,10 +18,10 @@ import {
   Users, Clock, Activity, Maximize2, Minimize2, Eye, FileText, Brain, Dna, 
   Image, BarChart3, Send, Mic, Bot, CheckCircle2, ExternalLink, Presentation,
   Stethoscope, Zap, Target, BookOpen, FlaskConical, Calendar, User, MapPin,
-  Heart, Beaker, Monitor, ChevronDown, ChevronUp
+  Heart, Beaker, Monitor, ChevronDown, ChevronUp, X, Loader2, Sparkles, Square
 } from 'lucide-react'
 import type { Patient } from '@/lib/types'
-import { transcribeAudio } from '@/lib/transcription'
+import { cn } from '@/lib/utils'
 
 interface TumorBoardWorkspaceProps {
   patient: Patient
@@ -69,12 +69,25 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [presentationMode, setPresentationMode] = useState(false)
   const [chatInput, setChatInput] = useState("")
-  const [isRecording, setIsRecording] = useState(false)
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
-  const [transcription, setTranscription] = useState<string | null>(null)
-  const audioChunksRef = useRef<Blob[]>([])
   const [currentView, setCurrentView] = useState("CASE OVERVIEW")
   const [showDecisionPad, setShowDecisionPad] = useState(false)
+  
+  // Voice Recorder State
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [transcript, setTranscript] = useState('')
+  const [summary, setSummary] = useState('')
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [recordingTime, setRecordingTime] = useState(0)
+  const [audioLevel, setAudioLevel] = useState(0)
+  const [error, setError] = useState('')
+  const [apiKey] = useState(process.env.NEXT_PUBLIC_OPENAI_API_KEY || '')
+
+  const recognitionRef = useRef<any>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const animationRef = useRef<number | null>(null)
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -360,34 +373,185 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
     }
   ]
 
-  const handleStartRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
-      setMediaRecorder(recorder)
-      audioChunksRef.current = []
-      recorder.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data)
-      }
-      recorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-        const transcribedText = await transcribeAudio(audioBlob)
-        if (transcribedText) {
-          setTranscription(transcribedText)
-          setChatInput((prev) => prev + transcribedText)
-        }
-      }
-      recorder.start()
-      setIsRecording(true)
-    } catch (error) {
-      console.error("Error starting recording:", error)
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+      if (animationRef.current) cancelAnimationFrame(animationRef.current)
+      if (audioContextRef.current) audioContextRef.current.close()
+    }
+  }, [])
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const analyzeAudio = () => {
+    if (!analyserRef.current) return
+
+    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount)
+    analyserRef.current.getByteFrequencyData(dataArray)
+    
+    const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length
+    setAudioLevel(average / 255) // Normalize to 0-1
+
+    if (isRecording) {
+      animationRef.current = requestAnimationFrame(analyzeAudio)
     }
   }
 
-  const handleStopRecording = () => {
-    if (mediaRecorder) {
-      mediaRecorder.stop()
-      setIsRecording(false)
+  const startRecording = async () => {
+    try {
+      setError('')
+      
+      // Request microphone permission
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      
+      // Setup audio analysis
+      audioContextRef.current = new AudioContext()
+      const source = audioContextRef.current.createMediaStreamSource(stream)
+      analyserRef.current = audioContextRef.current.createAnalyser()
+      analyserRef.current.fftSize = 256
+      source.connect(analyserRef.current)
+
+      // Setup speech recognition
+      if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition
+        recognitionRef.current = new SpeechRecognition()
+        recognitionRef.current.continuous = true
+        recognitionRef.current.interimResults = true
+        recognitionRef.current.lang = 'en-US'
+
+        recognitionRef.current.onresult = (event: any) => {
+          let finalTranscript = ''
+          let interimTranscript = ''
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript
+            if (event.results[i].isFinal) {
+              finalTranscript += transcript
+            } else {
+              interimTranscript += transcript
+            }
+          }
+
+          // Only append final transcript to avoid duplication
+          // Show interim transcript temporarily for live feedback
+          if (finalTranscript) {
+            setTranscript(prev => prev + finalTranscript)
+          }
+        }
+
+        recognitionRef.current.start()
+      }
+
+      setIsRecording(true)
+      setRecordingTime(0)
+      setTranscript('')
+      setSummary('')
+
+      // Start timer
+      timerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1)
+      }, 1000)
+
+      // Start audio analysis
+      analyzeAudio()
+
+    } catch (err) {
+      setError('Failed to access microphone. Please check permissions.')
+      console.error('Error starting recording:', err)
+    }
+  }
+
+  const stopRecording = () => {
+    setIsRecording(false)
+    
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+    }
+    
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+    }
+
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current)
+    }
+
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+    }
+
+    setAudioLevel(0)
+
+    // Generate summary if transcript exists
+    if (transcript.trim()) {
+      generateSummary()
+    }
+  }
+
+  const generateSummary = async () => {
+    if (!transcript.trim() || !apiKey) return
+
+    setIsProcessing(true)
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: `You are an AI assistant that creates comprehensive tumor board summaries from voice recordings. 
+
+Format your response as a professional medical report:
+
+# 🏥 Tumor Board Session Summary
+
+## 📝 Key Discussion Points
+- [Main discussion points]
+
+## 🎯 Clinical Decisions
+- [Treatment decisions made]
+
+## 📊 Case Review
+- [Case details discussed]
+
+## ✅ Action Items
+- [Follow-up actions required]
+
+## 🔬 Specialist Input
+- [Input from different specialists]
+
+Use professional medical language and clear formatting.`
+            },
+            {
+              role: 'user',
+              content: `Please summarize this tumor board discussion transcript:\n\n${transcript}`
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 1500
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to generate summary')
+      }
+
+      const data = await response.json()
+      setSummary(data.choices[0].message.content)
+    } catch (err) {
+      setError('Failed to generate summary. Please check your API key.')
+      console.error('Error generating summary:', err)
+    } finally {
+      setIsProcessing(false)
     }
   }
 
@@ -702,14 +866,6 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
               }}
             />
             <div className="flex flex-col gap-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                className={`h-8 w-8 p-0 ${isRecording ? 'text-red-500' : 'text-white/70'}`}
-                onClick={isRecording ? handleStopRecording : handleStartRecording}
-              >
-                <Mic className="w-3 h-3" />
-              </Button>
               <Button size="sm" onClick={handleSendMessage} className="h-8 w-8 p-0 bg-[#4a6bff] hover:bg-[#3a5bef]">
                 <Send className="w-3 h-3" />
               </Button>
@@ -871,6 +1027,219 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
           )}
         </div>
       </main>
+
+      {/* Floating Voice Recorder Interface */}
+      {showVoiceRecorder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-gradient-to-br from-purple-900 via-blue-900 to-purple-900 rounded-3xl p-8 max-w-lg w-full mx-4 border border-white/20 shadow-2xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <Brain className="w-8 h-8 text-cyan-400" />
+                  <Sparkles className="w-4 h-4 text-purple-400 absolute -top-1 -right-1 animate-pulse" />
+                </div>
+                <h3 className="text-xl font-bold text-white">Neural Voice Recorder</h3>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  // Close panel but keep recording if recording is active
+                  setShowVoiceRecorder(false)
+                }}
+                className="text-white/70 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+
+            {/* Recording Interface */}
+            <div className="text-center mb-6 flex-shrink-0">
+              {/* Recording Timer */}
+              <div className="mb-4">
+                <div className="text-2xl font-mono text-cyan-400 font-bold">
+                  {formatTime(recordingTime)}
+                </div>
+                <div className="text-sm text-white/60 mt-1">Recording Time</div>
+              </div>
+
+              {/* Recording Button */}
+              <div className="relative mb-6">
+                <Button
+                  onClick={isRecording ? stopRecording : startRecording}
+                  disabled={isProcessing}
+                  className={cn(
+                    "w-24 h-24 rounded-full text-white font-semibold transition-all duration-300 relative overflow-hidden",
+                    isRecording
+                      ? "bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 animate-pulse shadow-lg shadow-red-500/30"
+                      : "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 hover:scale-105 shadow-lg shadow-cyan-500/30"
+                  )}
+                >
+                  {isRecording ? (
+                    <Square className="w-8 h-8" />
+                  ) : (
+                    <Mic className="w-8 h-8" />
+                  )}
+                  
+                  {/* Pulse animation */}
+                  {isRecording && (
+                    <div className="absolute inset-0 rounded-full border-4 border-white/30 animate-ping" />
+                  )}
+                </Button>
+
+                {/* Audio Level Visualization */}
+                {isRecording && (
+                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 flex gap-1">
+                    {[...Array(6)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="w-1.5 bg-gradient-to-t from-cyan-500 to-blue-500 rounded-full transition-all duration-150"
+                        style={{
+                          height: `${Math.max(3, audioLevel * 30 + Math.random() * 8)}px`
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Status */}
+              <div className="text-center mb-4">
+                {isRecording ? (
+                  <div className="flex items-center justify-center gap-2 text-red-400">
+                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                    <span className="text-sm font-medium">Listening...</span>
+                  </div>
+                ) : isProcessing ? (
+                  <div className="flex items-center justify-center gap-2 text-cyan-400">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-sm font-medium">AI Processing...</span>
+                  </div>
+                ) : (
+                  <div className="text-white/60 text-sm">
+                    Tap to start recording
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Scrollable Content Area */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              {/* Live Transcript */}
+              {(transcript || isRecording) && (
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                    <h4 className="text-sm font-semibold text-white">Live Transcript</h4>
+                  </div>
+                  <div className="h-32 overflow-y-auto bg-black/30 rounded-lg p-3 border border-white/20">
+                    {transcript ? (
+                      <p className="text-white/90 text-sm leading-relaxed whitespace-pre-wrap">
+                        {transcript}
+                      </p>
+                    ) : (
+                      <p className="text-white/50 text-sm italic">
+                        Start speaking to see live transcription...
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* AI Summary */}
+              {(summary || isProcessing) && (
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Brain className="w-4 h-4 text-purple-400" />
+                    <h4 className="text-sm font-semibold text-white">AI Summary</h4>
+                  </div>
+                  
+                  <div className="bg-black/30 rounded-lg p-3 border border-white/20 max-h-64 overflow-y-auto">
+                    {isProcessing ? (
+                      <div className="flex items-center justify-center py-4">
+                        <div className="text-center">
+                          <Loader2 className="w-6 h-6 text-cyan-400 animate-spin mx-auto mb-2" />
+                          <p className="text-white/70 text-sm">Analyzing discussion...</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-white/90 text-sm leading-relaxed">
+                        {summary.split('\n').map((line, index) => {
+                          if (line.startsWith('# ')) {
+                            return <h1 key={index} className="text-lg font-bold text-cyan-400 mb-3 mt-2">{line.replace('# ', '')}</h1>
+                          } else if (line.startsWith('## ')) {
+                            return <h2 key={index} className="text-base font-semibold text-purple-400 mb-2 mt-4">{line.replace('## ', '')}</h2>
+                          } else if (line.startsWith('### ')) {
+                            return <h3 key={index} className="text-sm font-medium text-blue-400 mb-2 mt-3">{line.replace('### ', '')}</h3>
+                          } else if (line.startsWith('- ')) {
+                            return <div key={index} className="ml-4 mb-1 text-white/80">• {line.replace('- ', '')}</div>
+                          } else if (line.trim()) {
+                            return <p key={index} className="mb-2 text-white/90">{line}</p>
+                          } else {
+                            return <div key={index} className="mb-2"></div>
+                          }
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Error Display */}
+            {error && (
+              <div className="mt-4 p-3 bg-red-900/20 border border-red-500/50 rounded-lg">
+                <p className="text-red-400 text-sm text-center">{error}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Floating Voice Recorder Button */}
+      {!showVoiceRecorder && (
+        <>
+          {/* Main floating button */}
+          <Button
+            onClick={() => {
+              if (!isRecording) {
+                startRecording()
+              }
+              setShowVoiceRecorder(true)
+            }}
+            className={cn(
+              "fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg border-2 border-white/20 backdrop-blur-sm hover:scale-110 transition-all duration-300 z-40",
+              isRecording 
+                ? "bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 animate-pulse shadow-red-500/30"
+                : "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 shadow-cyan-500/30"
+            )}
+          >
+            <Mic className="w-6 h-6 text-white" />
+            {isRecording && (
+              <div className="absolute inset-0 rounded-full border-2 border-white/30 animate-ping" />
+            )}
+          </Button>
+
+          {/* Small up arrow when recording in background */}
+          {isRecording && (
+            <Button
+              onClick={() => setShowVoiceRecorder(true)}
+              className="fixed bottom-24 right-6 w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 shadow-lg shadow-purple-500/30 border border-white/20 backdrop-blur-sm hover:scale-110 transition-all duration-300 z-40"
+            >
+              <ChevronUp className="w-4 h-4 text-white" />
+            </Button>
+          )}
+        </>
+      )}
     </div>
   )
+}
+
+// Declare global interfaces for Speech Recognition
+declare global {
+  interface Window {
+    webkitSpeechRecognition: any
+    SpeechRecognition: any
+  }
 } 

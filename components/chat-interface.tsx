@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
 import type { Patient } from "@/lib/types"
-import { Mic, Send } from "lucide-react"
+import { Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -410,9 +410,6 @@ What would you like me to help you with today?`
              rows={2}
            />
           <div className="flex gap-1">
-            <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-              <Mic className="h-3 w-3 text-white/70" />
-            </Button>
             <Button size="sm" onClick={handleSendMessage} className="h-8 w-8 p-0 bg-[#4a6bff] hover:bg-[#3a5bef]">
               <Send className="h-3 w-3" />
             </Button>

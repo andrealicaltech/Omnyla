@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
 
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
+  apiKey: process.env.GROQ_API_KEY || 'dummy-key-for-build',
 });
 
 export async function POST(req: NextRequest) {
   try {
+    if (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY === 'dummy-key-for-build') {
+      return NextResponse.json({ error: 'GROQ API key not configured' }, { status: 500 });
+    }
+
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
 
