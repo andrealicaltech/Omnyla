@@ -1,0 +1,20 @@
+##fileformat=VCFv4.2
+##fileDate=20231215
+##source=SampleVCF
+##reference=file:///seq/references/1000GenomesPilot-NCBI36.fasta
+##contig=<ID=1,length=249250621,assembly=NCBI36>
+##contig=<ID=2,length=242193529,assembly=NCBI36>
+##contig=<ID=3,length=198022430,assembly=NCBI36>
+##INFO=<ID=GENE,Number=1,Type=String,Description="Gene symbol">
+##INFO=<ID=ANN,Number=.,Type=String,Description="Functional annotations">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Approximate read depth">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SAMPLE
+1	230845794	rs1799853	C	T	100	PASS	GENE=CYP2C9;ANN=T|missense_variant|MODERATE|CYP2C9|ENSG00000138109|transcript|ENST00000231509|protein_coding|1/9|c.430C>T|p.Arg144Cys|559/1587|430/1476|144/491||	GT:AD:DP	0/1:15,12:27
+10	96522463	rs1065852	C	T	100	PASS	GENE=CYP2D6;ANN=T|missense_variant|MODERATE|CYP2D6|ENSG00000100197|transcript|ENST00000367470|protein_coding|1/9|c.100C>T|p.Pro34Ser|394/1774|100/1491|34/496||	GT:AD:DP	1/1:0,25:25
+12	21178615	rs4149056	T	C	100	PASS	GENE=SLCO1B1;ANN=C|missense_variant|MODERATE|SLCO1B1|ENSG00000134538|transcript|ENST00000356839|protein_coding|5/15|c.521T>C|p.Val174Ala|896/2394|521/2085|174/694||	GT:AD:DP	0/1:18,14:32
+19	38449840	rs12979860	C	T	100	PASS	GENE=IFNL3;ANN=T|intergenic_variant|MODIFIER|IFNL3|ENSG00000239998|intergenic_region|||||||	GT:AD:DP	0/1:20,15:35
+2	233760233	rs2279343	A	G	100	PASS	GENE=UGT1A1;ANN=G|upstream_gene_variant|MODIFIER|UGT1A1|ENSG00000167165|upstream|ENST00000305208|protein_coding||||||	GT:AD:DP	1/1:0,28:28
+6	18139214	rs1800462	G	A	100	PASS	GENE=TPMT;ANN=A|missense_variant|MODERATE|TPMT|ENSG00000137364|transcript|ENST00000323302|protein_coding|7/10|c.719G>A|p.Ala240Thr|1018/1485|719/738|240/245||	GT:AD:DP	0/1:22,18:40
+7	117227832	rs28399504	A	G	100	PASS	GENE=CFTR;ANN=G|missense_variant|MODERATE|CFTR|ENSG00000001626|transcript|ENST00000003084|protein_coding|11/27|c.1521A>G|p.Lys507Glu|1757/6132|1521/4443|507/1480||	GT:AD:DP	0/1:16,13:29 

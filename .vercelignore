@@ -1,0 +1,13 @@
+# Ignore large files and folders not needed in production
+node_modules/
+temp/
+pharmcat/
+*.log
+pharmcat*.log
+.DS_Store
+.git/
+.vercel/
+
+# Only include necessary files for the web app
+# Keep: app/, components/, lib/, public/, styles/, hooks/, store/
+# Keep: package.json, next.config.mjs, tailwind.config.ts, etc. 

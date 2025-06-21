@@ -1,0 +1,8 @@
+##fileformat=VCFv4.2
+##ALT=<ID=BND,Description="Breakend">
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variant">
+##INFO=<ID=GENE,Number=1,Type=String,Description="Gene fusion involved">
+##INFO=<ID=FUSION,Number=1,Type=String,Description="Fusion name">
+##contig=<ID=2,length=243199373>
+#CHROM  POS        ID       REF ALT                         QUAL FILTER INFO                                        FORMAT SAMPLE
+2       29446394   bnd1     N   N]2:30223394]                .    PASS   SVTYPE=BND;GENE=EML4,ALK;FUSION=EML4-ALK     GT     0/1

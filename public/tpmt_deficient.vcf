@@ -1,0 +1,14 @@
+##fileformat=VCFv4.2
+##fileDate=20231215
+##source=PharmCATTest
+##reference=hg38
+##contig=<ID=chr6,length=170805979>
+##INFO=<ID=AC,Number=A,Type=Integer,Description="Allele count">
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele frequency">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Approximate read depth">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SAMPLE
+chr6	18130694	rs150900439	T	C	100	PASS	AC=1;AF=0.5	GT:AD:DP	0/1:15,12:27
+chr6	18138997	rs1800460	C	T	100	PASS	AC=1;AF=0.5	GT:AD:DP	0/1:18,14:32
+chr6	18143724	rs1800462	C	T	100	PASS	AC=1;AF=0.5	GT:AD:DP	0/1:16,15:31 
