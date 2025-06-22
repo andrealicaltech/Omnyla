@@ -306,33 +306,30 @@ What would you like me to help you with today?`
   }
 
   const handleSendMessage = () => {
-    if (!input.trim()) return
-
-    // Add user message
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      sender: "user",
-      content: input,
-      timestamp: new Date(),
-    }
-    setMessages((prev) => [...prev, userMessage])
-
-    const currentInput = input
-    setInput("")
-
-    // Simulate AI response with more sophisticated logic
-    setTimeout(() => {
-      const response = getAIResponse(currentInput)
-      
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        sender: "assistant",
-        content: typeof response === 'string' ? response : response.content,
+    if (input.trim()) {
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        sender: "user",
+        content: input,
         timestamp: new Date(),
-        actions: typeof response === 'object' ? response.actions : undefined,
       }
-      setMessages((prev) => [...prev, aiResponse])
-    }, 1000)
+
+      setMessages(prev => [...prev, userMessage])
+      setInput("")
+
+      // Simulate AI response
+      setTimeout(() => {
+        const aiResponse = getAIResponse(input)
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          sender: "assistant",
+          content: aiResponse.content,
+          timestamp: new Date(),
+          actions: aiResponse.actions,
+        }
+        setMessages(prev => [...prev, assistantMessage])
+      }, 1000)
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -343,77 +340,77 @@ What would you like me to help you with today?`
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 p-4 overflow-y-auto custom-scrollbar min-h-0">
+    <div className="flex flex-col h-full bg-[#0a0a1e]">
+      {/* Chat Header */}
+      <div className="flex items-center justify-between p-4 border-b border-white/10">
+        <div className="flex items-center space-x-2">
+          <BotAvatar />
+          <div>
+            <h3 className="text-sm font-medium text-white/90">Nila AI Assistant</h3>
+            <p className="text-xs text-white/50">Powered by Omnyla</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <ScrollArea className="flex-1 p-4">
         <div className="space-y-4">
           {messages.map((message) => (
-            <div key={message.id} className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}>
+            <div
+              key={message.id}
+              className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}
+            >
               <div
-                className={`flex max-w-[80%] ${
+                className={`max-w-[80%] rounded-lg p-3 ${
                   message.sender === "user"
-                    ? "bg-[#1e2040] rounded-l-lg rounded-tr-lg"
-                    : "bg-[#1a1a30] rounded-r-lg rounded-tl-lg"
-                } p-3`}
+                    ? "bg-[#4a6bff] text-white"
+                    : "bg-[#1a1a2e] text-white/90 border border-white/10"
+                }`}
               >
-                {message.sender === "assistant" && (
-                  <BotAvatar 
-                    type="general" 
-                    size="md" 
-                    className="mr-2 flex-shrink-0"
-                  />
-                )}
-                <div className="flex-1">
-                  <p className="text-sm text-white/90 whitespace-pre-wrap">{message.content}</p>
-                  
-                  {/* Action Cards */}
-                  {message.actions && message.actions.length > 0 && (
-                    <div className="grid grid-cols-1 gap-2 mt-3 max-w-md">
-                      {message.actions.map((action, index) => (
-                        <ActionCard
-                          key={index}
-                          icon={action.icon}
-                          title={action.title}
-                          description={action.description}
-                          action={action.action}
-                          onClick={handleActionClick}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  
-                  <div className="flex items-center mt-2 text-xs text-white/50">
-                    {new Intl.DateTimeFormat("en-US", {
-                      hour: "numeric",
-                      minute: "numeric",
-                      hour12: true,
-                    }).format(message.timestamp)}
+                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                
+                {message.actions && (
+                  <div className="mt-3 space-y-2">
+                    {message.actions.map((action, index) => (
+                      <ActionCard
+                        key={index}
+                        icon={action.icon}
+                        title={action.title}
+                        description={action.description}
+                        onClick={() => handleActionClick(action.action)}
+                      />
+                    ))}
                   </div>
-                </div>
+                )}
+                
+                <p className="text-xs opacity-50 mt-2">
+                  {message.timestamp.toLocaleTimeString()}
+                </p>
               </div>
             </div>
           ))}
           <div ref={messagesEndRef} />
         </div>
-      </div>
+      </ScrollArea>
 
+      {/* Input */}
       <div className="p-4 border-t border-white/10">
-        <div className="text-xs text-white/50 mb-2 text-center">
-          LLMs can make mistakes. Verify important information.
-        </div>
-        <div className="flex items-center gap-2">
-                     <Textarea
-             value={input}
-             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value)}
-             onKeyDown={handleKeyDown}
-             placeholder="Ask the AI specialists..."
-             className="flex-1 bg-[#1a1a30] border-white/20 text-white/90 resize-none text-xs"
-             rows={2}
-           />
-          <div className="flex gap-1">
-            <Button size="sm" onClick={handleSendMessage} className="h-8 w-8 p-0 bg-[#4a6bff] hover:bg-[#3a5bef]">
-              <Send className="h-3 w-3" />
-            </Button>
-          </div>
+        <div className="flex space-x-2">
+          <Textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask me about the patient case, imaging, biomarkers, or treatment options..."
+            className="flex-1 bg-[#1a1a2e] border-white/20 text-white placeholder:text-white/50 resize-none"
+            rows={2}
+          />
+          <Button
+            onClick={handleSendMessage}
+            disabled={!input.trim()}
+            className="bg-[#4a6bff] hover:bg-[#4a6bff]/80 text-white px-4"
+          >
+            <Send className="w-4 h-4" />
+          </Button>
         </div>
       </div>
     </div>
