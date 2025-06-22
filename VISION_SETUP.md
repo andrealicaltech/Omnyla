@@ -55,7 +55,7 @@ This document explains how to set up and use the BiomedCLIP vision analysis feat
 Add to your `.env.local`:
 ```bash
 NEXT_PUBLIC_VISION_API_URL=http://localhost:8000
-NEXT_PUBLIC_OPENAI_API_KEY=your-openai-key
+NEXT_PUBLIC_ANTHROPIC_API_KEY=your-anthropic-key
 GROQ_API_KEY=your-groq-key
 ```
 

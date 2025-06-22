@@ -1,0 +1,6 @@
+##fileformat=VCFv4.2
+##source=SampleGenerator
+##INFO=<ID=GENE,Number=1,Type=String,Description="Gene Name">
+##INFO=<ID=COSMIC_ID,Number=1,Type=String,Description="COSMIC ID">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+7	55249071	.	T	G	.	PASS	GENE=EGFR;COSMIC_ID=COSM6224 

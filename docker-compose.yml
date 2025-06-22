@@ -22,7 +22,7 @@ services:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_VISION_API_URL=http://localhost:8000
-      - NEXT_PUBLIC_OPENAI_API_KEY=${NEXT_PUBLIC_OPENAI_API_KEY}
+      - NEXT_PUBLIC_ANTHROPIC_API_KEY=${NEXT_PUBLIC_ANTHROPIC_API_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY}
     depends_on:
       - vision-api

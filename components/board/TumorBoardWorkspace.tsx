@@ -22,17 +22,27 @@ import {
 } from 'lucide-react'
 import type { Patient } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
+import Anthropic from '@anthropic-ai/sdk';
+import { v4 as uuidv4 } from 'uuid';
+
+interface CustomWindow extends Window {
+  webkitSpeechRecognition: any;
+  SpeechRecognition: any;
+}
+
+declare const window: CustomWindow;
 
 interface TumorBoardWorkspaceProps {
-  patient: Patient
+  patient: Patient;
 }
 
 interface Message {
-  id: string
-  sender: "user" | "genetics" | "oncology" | "pathology" | "radiology" | "immunotherapy"
-  content: string
-  timestamp: Date
-  agentName?: string
+  id: string;
+  sender: string; // More flexible sender
+  agentName?: string;
+  content: string;
+  timestamp: Date;
 }
 
 interface QuickInsight {
@@ -81,7 +91,6 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
   const [recordingTime, setRecordingTime] = useState(0)
   const [audioLevel, setAudioLevel] = useState(0)
   const [error, setError] = useState('')
-  const [apiKey] = useState(process.env.NEXT_PUBLIC_OPENAI_API_KEY || '')
 
   const recognitionRef = useRef<any>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -97,6 +106,7 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
       timestamp: new Date(),
     },
   ])
+  const [isBotTyping, setIsBotTyping] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Enhanced insights with selection capability
@@ -722,35 +732,37 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
       source.connect(analyserRef.current)
 
       // Setup speech recognition
-      if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-        const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition
-        recognitionRef.current = new SpeechRecognition()
-        recognitionRef.current.continuous = true
-        recognitionRef.current.interimResults = true
-        recognitionRef.current.lang = 'en-US'
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+      if (!SpeechRecognition) {
+        setError("Speech recognition is not supported in this browser.")
+        return
+      }
+      recognitionRef.current = new SpeechRecognition()
+      recognitionRef.current.continuous = true
+      recognitionRef.current.interimResults = true
+      recognitionRef.current.lang = 'en-US'
 
-        recognitionRef.current.onresult = (event: any) => {
-          let finalTranscript = ''
-          let interimTranscript = ''
+      recognitionRef.current.onresult = (event: any) => {
+        let finalTranscript = ''
+        let interimTranscript = ''
 
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const transcript = event.results[i][0].transcript
-            if (event.results[i].isFinal) {
-              finalTranscript += transcript
-            } else {
-              interimTranscript += transcript
-            }
-          }
-
-          // Only append final transcript to avoid duplication
-          // Show interim transcript temporarily for live feedback
-          if (finalTranscript) {
-            setTranscript(prev => prev + finalTranscript)
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript
+          } else {
+            interimTranscript += transcript
           }
         }
 
-        recognitionRef.current.start()
+        // Only append final transcript to avoid duplication
+        // Show interim transcript temporarily for live feedback
+        if (finalTranscript) {
+          setTranscript(prev => prev + finalTranscript)
+        }
       }
+
+      recognitionRef.current.start()
 
       setIsRecording(true)
       setRecordingTime(0)
@@ -794,68 +806,62 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
 
     // Generate summary if transcript exists
     if (transcript.trim()) {
-      generateSummary()
+      generateSummary(transcript)
     }
   }
 
-  const generateSummary = async () => {
-    if (!transcript.trim() || !apiKey) return
+  const generateSummary = async (currentTranscript: string) => {
+    const anthropic = new Anthropic({
+      apiKey: process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY,
+      dangerouslyAllowBrowser: true,
+    });
+
+    if (!currentTranscript.trim()) return
 
     setIsProcessing(true)
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: `You are an AI assistant that creates comprehensive tumor board summaries from voice recordings. 
+      const msg = await anthropic.messages.create({
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 1500,
+        temperature: 0.7,
+        system: `You are an AI assistant that creates comprehensive summaries from voice recordings.
 
-Format your response as a professional medical report:
+Your primary goal is to format the output as a professional medical report, following the structure below. However, even if the transcript does not contain specific details for every section, you must still generate a summary of the available text. Do not refuse to generate a summary based on the content.
 
-# 🏥 Tumor Board Session Summary
+If the content is not related to a tumor board, adapt the headings and summarize the key points discussed as best as you can.
+
+# 🏥 Meeting Summary
 
 ## 📝 Key Discussion Points
 - [Main discussion points]
 
-## 🎯 Clinical Decisions
-- [Treatment decisions made]
+## 🎯 Decisions & Action Items
+- [Decisions made and follow-up actions]
 
-## 📊 Case Review
-- [Case details discussed]
+## 🔬 Other Details
+- [Any other relevant information]
 
-## ✅ Action Items
-- [Follow-up actions required]
+Use professional language and clear formatting.`,
+        messages: [
+          {
+            role: 'user',
+            content: `Please summarize this tumor board discussion transcript:\n\n${currentTranscript}`
+          }
+        ],
+      });
 
-## 🔬 Specialist Input
-- [Input from different specialists]
+      const responseText = msg.content
+        .map(block => ('text' in block ? block.text : ''))
+        .join('');
 
-Use professional medical language and clear formatting.`
-            },
-            {
-              role: 'user',
-              content: `Please summarize this tumor board discussion transcript:\n\n${transcript}`
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 1500
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to generate summary')
+      if (responseText) {
+        setSummary(responseText);
+      } else {
+        throw new Error('No text content in response from Anthropic');
       }
-
-      const data = await response.json()
-      setSummary(data.choices[0].message.content)
     } catch (err) {
-      setError('Failed to generate summary. Please check your API key.')
-      console.error('Error generating summary:', err)
+      console.error(err);
+      setError('Failed to generate summary');
     } finally {
       setIsProcessing(false)
     }
@@ -930,34 +936,98 @@ Use professional medical language and clear formatting.`
     }
   }
 
-  const handleSendMessage = () => {
-    if (!chatInput.trim()) return
-
-    // Add user message
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      sender: "user",
+  const handleSendMessage = async () => {
+    if (chatInput.trim() === "") return
+    const newMessage = {
+      id: uuidv4(),
+      sender: "user" as const,
       content: chatInput,
       timestamp: new Date(),
     }
-    setMessages(prev => [...prev, userMessage])
-
-    const currentInput = chatInput
+    setMessages(prev => [...prev, newMessage])
     setChatInput("")
+    setIsBotTyping(true)
 
-    // Trigger appropriate agent response
-    setTimeout(() => {
-      const response = getAgentResponse(currentInput)
-      setMessages(prev => [...prev, response])
+    // --- Construct the full context for Claude ---
+    const context = `
+      # Patient Information
+      - Name: ${patient.name}
+      - Age: ${patient.age}
+      - Sex: ${patient.sex}
+      - Diagnosis: ${patient.diagnosis}
+      - Stage: ${patient.tumor_stage}
 
-      // Sometimes trigger follow-up from another agent
-      if (Math.random() > 0.7) {
-        setTimeout(() => {
-          const followUp = getAgentResponse(currentInput, "oncology")
-          setMessages(prev => [...prev, followUp])
-        }, 2000)
+      # Case Overview
+      ${patient.case_overview.summary}
+
+      # Biomarkers
+      ${patient.biomarkers.map((b: { name: string; result: string; status: string; }) => `- ${b.name}: ${b.result} (Status: ${b.status})`).join('\n')}
+
+      # Image Analysis Results
+      ${Object.entries(analysisResults).map(([image, result]) => 
+        `## Image: ${image}\n- AI Finding: ${(result as any).finding}\n- AI Confidence: ${((result as any).confidence * 100).toFixed(1)}%`
+      ).join('\n')}
+
+      # Previous Conversation
+      ${messages.map(m => `${m.agentName || m.sender}: ${m.content}`).join('\n')}
+    `;
+
+    // --- Call Claude API ---
+    const anthropic = new Anthropic({
+      apiKey: process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY,
+      dangerouslyAllowBrowser: true,
+    });
+
+    try {
+      const msg = await anthropic.messages.create({
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 1500,
+        temperature: 0.7,
+        system: `You are a team of AI medical specialists collaborating on a tumor board. Your team consists of Dr. AI Genetics, Dr. AI Radiology, and Dr. AI Oncology. Based on the comprehensive patient data provided below, answer the user's questions. Always respond in character as the most relevant AI specialist. Start your response with your name (e.g., "Dr. AI Radiology: ...").
+
+        Here is the full case context:
+        ${context}`,
+        messages: [
+          {
+            role: 'user',
+            content: chatInput
+          }
+        ],
+      });
+
+      const responseText = msg.content
+        .map(block => ('text' in block ? block.text : ''))
+        .join('');
+      
+      if (responseText) {
+        const [agentName, ...contentParts] = responseText.split(': ');
+        const content = contentParts.join(': ');
+
+        const botMessage = {
+          id: uuidv4(),
+          sender: "bot" as const,
+          agentName: agentName || "Dr. AI Assistant",
+          content: content.trim(),
+          timestamp: new Date(),
+        }
+        setMessages(prev => [...prev, botMessage])
+      } else {
+        throw new Error('No text content in response from Anthropic');
       }
-    }, 1000)
+
+    } catch (err) {
+      console.error(err);
+      const errorMessage = {
+        id: uuidv4(),
+        sender: "bot" as const,
+        agentName: "System",
+        content: "Sorry, I encountered an error trying to get a response. Please check the console.",
+        timestamp: new Date(),
+      }
+      setMessages(prev => [...prev, errorMessage])
+    } finally {
+      setIsBotTyping(false)
+    }
   }
 
   const handleTabChange = (tab: string) => {
@@ -1125,33 +1195,18 @@ Use professional medical language and clear formatting.`
         {/* Chat Messages */}
         <div className="flex-1 p-4 overflow-y-auto custom-scrollbar">
           <div className="space-y-4">
-            {messages.map((message) => (
-              <div key={message.id} className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`flex max-w-[90%] ${
-                  message.sender === "user"
-                    ? "bg-[#4a6bff] rounded-l-lg rounded-tr-lg"
-                    : "bg-[#1a1a30] rounded-r-lg rounded-tl-lg border border-white/10"
-                } p-3`}>
-                  {message.sender !== "user" && (
-                    <BotAvatar 
-                      type={message.sender as any} 
-                      size="sm" 
-                      className="mr-2 flex-shrink-0"
-                    />
-                  )}
-                  <div className="flex-1">
-                    {message.agentName && (
-                      <div className="text-xs text-white/50 mb-1">{message.agentName}</div>
-                    )}
-                    <p className="text-xs text-white/90 leading-relaxed">{message.content}</p>
-                    <div className="text-xs text-white/40 mt-1">
-                      {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                  </div>
+            {messages.map((msg) => (
+              <div key={msg.id} className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
+                <div className={cn("max-w-[70%] p-3 rounded-lg", msg.sender === 'user' ? "bg-blue-600 text-white rounded-br-none" : "bg-slate-700 text-slate-200 rounded-bl-none")}>
+                  {msg.sender !== 'user' && <p className="font-bold text-green-400 mb-1">{msg.agentName}</p>}
+                  <p className="text-sm leading-relaxed">{msg.content}</p>
+                  <p className="text-xs text-slate-400 mt-2 text-right">{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
               </div>
             ))}
-            <div ref={messagesEndRef} />
+            {isBotTyping && (
+              <div ref={messagesEndRef} />
+            )}
           </div>
         </div>
 
@@ -1409,143 +1464,10 @@ Use professional medical language and clear formatting.`
                   </div>
                 )}
               </div>
-
-              {/* Status */}
-              <div className="text-center mb-4">
-                {isRecording ? (
-                  <div className="flex items-center justify-center gap-2 text-red-400">
-                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                    <span className="text-sm font-medium">Listening...</span>
-                  </div>
-                ) : isProcessing ? (
-                  <div className="flex items-center justify-center gap-2 text-cyan-400">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span className="text-sm font-medium">AI Processing...</span>
-                  </div>
-                ) : (
-                  <div className="text-white/60 text-sm">
-                    Tap to start recording
-                  </div>
-                )}
-              </div>
             </div>
-
-            {/* Scrollable Content Area */}
-            <div className="flex-1 overflow-y-auto min-h-0">
-              {/* Live Transcript */}
-              {(transcript || isRecording) && (
-                <div className="mb-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                    <h4 className="text-sm font-semibold text-white">Live Transcript</h4>
-                  </div>
-                  <div className="h-32 overflow-y-auto bg-black/30 rounded-lg p-3 border border-white/20">
-                    {transcript ? (
-                      <p className="text-white/90 text-sm leading-relaxed whitespace-pre-wrap">
-                        {transcript}
-                      </p>
-                    ) : (
-                      <p className="text-white/50 text-sm italic">
-                        Start speaking to see live transcription...
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* AI Summary */}
-              {(summary || isProcessing) && (
-                <div className="mb-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Brain className="w-4 h-4 text-purple-400" />
-                    <h4 className="text-sm font-semibold text-white">AI Summary</h4>
-                  </div>
-                  
-                  <div className="bg-black/30 rounded-lg p-3 border border-white/20 max-h-64 overflow-y-auto">
-                    {isProcessing ? (
-                      <div className="flex items-center justify-center py-4">
-                        <div className="text-center">
-                          <Loader2 className="w-6 h-6 text-cyan-400 animate-spin mx-auto mb-2" />
-                          <p className="text-white/70 text-sm">Analyzing discussion...</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-white/90 text-sm leading-relaxed">
-                        {summary.split('\n').map((line, index) => {
-                          if (line.startsWith('# ')) {
-                            return <h1 key={index} className="text-lg font-bold text-cyan-400 mb-3 mt-2">{line.replace('# ', '')}</h1>
-                          } else if (line.startsWith('## ')) {
-                            return <h2 key={index} className="text-base font-semibold text-purple-400 mb-2 mt-4">{line.replace('## ', '')}</h2>
-                          } else if (line.startsWith('### ')) {
-                            return <h3 key={index} className="text-sm font-medium text-blue-400 mb-2 mt-3">{line.replace('### ', '')}</h3>
-                          } else if (line.startsWith('- ')) {
-                            return <div key={index} className="ml-4 mb-1 text-white/80">• {line.replace('- ', '')}</div>
-                          } else if (line.trim()) {
-                            return <p key={index} className="mb-2 text-white/90">{line}</p>
-                          } else {
-                            return <div key={index} className="mb-2"></div>
-                          }
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Error Display */}
-            {error && (
-              <div className="mt-4 p-3 bg-red-900/20 border border-red-500/50 rounded-lg">
-                <p className="text-red-400 text-sm text-center">{error}</p>
-              </div>
-            )}
           </div>
         </div>
-      )}
-
-      {/* Floating Voice Recorder Button */}
-      {!showVoiceRecorder && (
-        <>
-          {/* Main floating button */}
-          <Button
-            onClick={() => {
-              if (!isRecording) {
-                startRecording()
-              }
-              setShowVoiceRecorder(true)
-            }}
-            className={cn(
-              "fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg border-2 border-white/20 backdrop-blur-sm hover:scale-110 transition-all duration-300 z-40",
-              isRecording 
-                ? "bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 animate-pulse shadow-red-500/30"
-                : "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 shadow-cyan-500/30"
-            )}
-          >
-            <Mic className="w-6 h-6 text-white" />
-            {isRecording && (
-              <div className="absolute inset-0 rounded-full border-2 border-white/30 animate-ping" />
-            )}
-          </Button>
-
-          {/* Small up arrow when recording in background */}
-          {isRecording && (
-            <Button
-              onClick={() => setShowVoiceRecorder(true)}
-              className="fixed bottom-24 right-6 w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 shadow-lg shadow-purple-500/30 border border-white/20 backdrop-blur-sm hover:scale-110 transition-all duration-300 z-40"
-            >
-              <ChevronUp className="w-4 h-4 text-white" />
-            </Button>
-          )}
-        </>
       )}
     </div>
   )
 }
-
-// Declare global interfaces for Speech Recognition
-declare global {
-  interface Window {
-    webkitSpeechRecognition: any
-    SpeechRecognition: any
-  }
-} 
