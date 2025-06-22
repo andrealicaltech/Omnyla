@@ -87,47 +87,117 @@ def get_model_info():
     """Get model information"""
     return _loader.get_model_info()
 
-# Medical condition labels for classification
+# Medical condition labels for classification organized by specialty and body system
 MEDICAL_CONDITIONS = [
-    "normal chest x-ray",
+    # General Pathology
+    "normal tissue",
+    "abnormal tissue", 
+    "pathology",
+    "benign tissue",
+    "malignant tissue",
+    "inflammatory tissue",
+    "necrotic tissue",
+    "fibrotic tissue",
+    
+    # Respiratory System
+    "normal lung",
     "pneumonia",
-    "covid-19 pneumonia", 
     "lung cancer",
-    "pleural effusion",
+    "pulmonary edema",
     "pneumothorax",
+    "pleural effusion",
     "atelectasis",
-    "cardiomegaly",
-    "consolidation",
-    "edema",
     "emphysema",
-    "fibrosis",
-    "hernia",
-    "infiltration",
-    "mass",
-    "nodule",
-    "pleural thickening",
+    "pulmonary fibrosis",
+    "tuberculosis",
+    "asthma",
+    "bronchitis",
+    
+    # Cardiovascular System
+    "normal heart",
+    "cardiomegaly",
+    "myocardial infarction",
+    "heart failure",
+    "pericardial effusion",
+    "aortic aneurysm",
+    "coronary artery disease",
+    
+    # Neurological System
+    "normal brain",
     "brain tumor",
-    "glioma on brain MRI",
-    "meningioma",
-    "stroke on brain MRI",
-    "normal brain MRI",
-    "hemorrhage on brain MRI",
-    "ischemic stroke",
+    "stroke",
+    "hemorrhage",
+    "ischemia",
+    "multiple sclerosis",
+    "alzheimer disease",
     "brain metastases",
     "hydrocephalus",
-    "multiple sclerosis lesions",
-    "alzheimer disease changes",
-    "normal abdominal CT",
+    
+    # Gastrointestinal System
+    "normal abdomen",
     "liver cirrhosis",
-    "kidney stones",
-    "appendicitis",
-    "bowel obstruction",
-    "abdominal aortic aneurysm",
+    "hepatitis",
     "pancreatic cancer",
-    "liver metastases",
     "gallstones",
-    "inflammatory bowel disease"
+    "bowel obstruction",
+    "appendicitis",
+    "inflammatory bowel disease",
+    
+    # Musculoskeletal System
+    "normal bone",
+    "fracture",
+    "arthritis",
+    "osteoporosis",
+    "bone tumor",
+    "joint effusion",
+    
+    # Oncology
+    "cancer",
+    "tumor",
+    "metastasis",
+    "lymphoma",
+    "leukemia",
+    "sarcoma",
+    "carcinoma",
+    "adenocarcinoma",
+    
+    # Infectious Diseases
+    "infection",
+    "abscess",
+    "cellulitis",
+    "sepsis",
+    
+    # General Terms
+    "inflammation",
+    "edema",
+    "mass",
+    "nodule",
+    "cyst",
+    "calcification"
 ]
+
+# Specialty categories for better organization
+MEDICAL_SPECIALTIES = {
+    "Radiology": ["normal lung", "pneumonia", "lung cancer", "pneumothorax", "pleural effusion", "cardiomegaly", "brain tumor", "stroke"],
+    "Pathology": ["normal tissue", "abnormal tissue", "malignant tissue", "benign tissue", "cancer", "tumor", "carcinoma", "adenocarcinoma"],
+    "Cardiology": ["normal heart", "cardiomegaly", "myocardial infarction", "heart failure", "coronary artery disease"],
+    "Neurology": ["normal brain", "brain tumor", "stroke", "multiple sclerosis", "alzheimer disease"],
+    "Gastroenterology": ["normal abdomen", "liver cirrhosis", "hepatitis", "pancreatic cancer", "bowel obstruction"],
+    "Orthopedics": ["normal bone", "fracture", "arthritis", "osteoporosis", "bone tumor"],
+    "Oncology": ["cancer", "tumor", "metastasis", "lymphoma", "leukemia", "sarcoma"],
+    "Infectious Disease": ["infection", "abscess", "cellulitis", "sepsis", "tuberculosis"]
+}
+
+# Image type categories for proper organization
+IMAGE_CATEGORIES = {
+    "Histology": ["histology", "pathology", "microscopy", "tissue", "biopsy"],
+    "Radiology": ["xray", "ct", "mri", "ultrasound", "mammography"],
+    "Endoscopy": ["endoscopy", "colonoscopy", "gastroscopy", "bronchoscopy"],
+    "Dermatology": ["skin", "dermatology", "lesion", "mole", "rash"],
+    "Ophthalmology": ["retina", "fundus", "eye", "optical coherence tomography", "oct"],
+    "Cardiology": ["echocardiogram", "ekg", "cardiac", "angiography"],
+    "General": ["clinical", "medical", "diagnostic"]
+}
 
 def get_medical_conditions():
     """Get list of medical conditions for classification"""

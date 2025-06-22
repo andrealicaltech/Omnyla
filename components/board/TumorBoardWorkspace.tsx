@@ -135,33 +135,143 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
     }
   ])
 
-  // Image selection for presentation
+  // Enhanced image management with categorization and AI analysis
   const [availableImages, setAvailableImages] = useState<ImageItem[]>([
+    // Histology Images - as requested by user
+    {
+      id: "histology1",
+      title: "Histology Sample 1",
+      description: "Histological analysis of tissue sample",
+      type: "histology",
+      url: "/medical-images/histology 1.png",
+      selected: true
+    },
+    {
+      id: "histology2", 
+      title: "Histology Sample 2",
+      description: "Secondary tissue histological examination",
+      type: "histology",
+      url: "/medical-images/histology 2.png",
+      selected: true
+    },
+    {
+      id: "histology_chest",
+      title: "Histology Chest",
+      description: "Chest tissue histological analysis",
+      type: "histology", 
+      url: "/medical-images/histology chest.jpg",
+      selected: true
+    },
+    {
+      id: "histology_liver",
+      title: "Histology Liver",
+      description: "Hepatic tissue histological analysis",
+      type: "histology", 
+      url: "/medical-images/histology liver.jpg",
+      selected: true
+    },
+    // MRI Images - as requested by user, grouped with Stomach images
     {
       id: "mri1",
-      title: "Brain MRI - T2 Weighted",
-      description: "Irregular mass with heterogeneous enhancement",
+      title: "MRI Scan - Sequence 1",
+      description: "T1-weighted MRI showing structural details",
       type: "mri",
-      url: "https://sjra.com/wp-content/uploads/2023/05/Side-By-Side-Of-Brain-MRI-Scan-Results.webp",
+      url: "",
       selected: true
     },
     {
-      id: "hist1", 
-      title: "H&E Histopathology",
-      description: "Grade 2 invasive ductal carcinoma",
-      type: "histology",
-      url: "/placeholder.svg?height=400&width=600",
+      id: "mri2",
+      title: "MRI Scan - Sequence 2", 
+      description: "T2-weighted MRI for enhanced contrast",
+      type: "mri",
+      url: "/medical-images/mri 2.png",
+      selected: true
+    },
+    // Stomach Images - grouped with MRI as requested
+    {
+      id: "stomach1",
+      title: "Stomach Imaging - Sample 1",
+      description: "Gastric tissue analysis",
+      type: "mri",
+      url: "/medical-images/Stomach 1.png",
       selected: true
     },
     {
-      id: "ct1",
-      title: "Chest CT Follow-up",
-      description: "Post-treatment response assessment",
-      type: "ct",
-      url: "/placeholder.svg?height=400&width=600",
-      selected: false
+      id: "stomach2",
+      title: "Stomach Imaging - Sample 2", 
+      description: "Additional gastric tissue examination",
+      type: "mri",
+      url: "/medical-images/Stomach 2.png",
+      selected: true
     }
   ])
+
+  // AI Analysis state
+  const [analysisResults, setAnalysisResults] = useState<Record<string, any>>({})
+  const [analyzingImages, setAnalyzingImages] = useState<Set<string>>(new Set())
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
+
+  // Categorize images by type - MRI section includes Stomach images as requested
+  const categorizeImages = () => {
+    const categories = {
+      histology: availableImages.filter(img => img.type === 'histology'),
+      radiology: availableImages.filter(img => ['mri', 'ct', 'pet'].includes(img.type)),
+    }
+    return categories
+  }
+
+  // Handle AI analysis of individual images using the vision analysis hook
+  const analyzeImage = async (imageItem: ImageItem) => {
+    setAnalyzingImages(prev => new Set([...prev, imageItem.id]))
+    setAnalysisError(null)
+
+    try {
+      // Convert image URL to file for analysis
+      const response = await fetch(imageItem.url)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.statusText}`)
+      }
+      
+      const blob = await response.blob()
+      const file = new File([blob], `${imageItem.id}.${blob.type.split('/')[1]}`, { type: blob.type })
+
+      // Call vision API directly
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const apiUrl = process.env.NEXT_PUBLIC_VISION_API_URL || 'http://localhost:8000'
+      const analysisResponse = await fetch(`${apiUrl}/predict`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!analysisResponse.ok) {
+        throw new Error(`Vision API error: ${analysisResponse.status} ${analysisResponse.statusText}`)
+      }
+
+      const result = await analysisResponse.json()
+      
+      if (result.status === 'success' && result.analysis) {
+        setAnalysisResults(prev => ({
+          ...prev,
+          [imageItem.id]: result.analysis
+        }))
+      } else {
+        throw new Error('Invalid analysis response from vision API')
+      }
+
+    } catch (error) {
+      console.error('Analysis error:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Analysis failed'
+      setAnalysisError(errorMessage)
+    } finally {
+      setAnalyzingImages(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(imageItem.id)
+        return newSet
+      })
+    }
+  }
 
   // Lean tab content instead of full dashboard
   const leanTabs: LeanTabContent[] = [
@@ -234,39 +344,235 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
     },
     {
       id: "IMAGES",
-      name: "Imaging", 
-      summary: "MRI shows 2.5cm mass with satellite lesions, partial treatment response",
-      keyPoints: ["Primary tumor 30% reduction", "No new lesions", "Stable lymphadenopathy"],
+      name: "Medical Imaging", 
+      summary: "Comprehensive image analysis with AI-powered diagnostics",
+      keyPoints: ["Histology & Radiology", "BiomedCLIP Analysis", "Multi-specialty Insights"],
       selected: true,
       icon: <Monitor className="w-4 h-4" />,
       content: (
         <div className="space-y-6">
-          <div className="text-base text-white/90 mb-4">Select images for presentation:</div>
-          <div className="grid grid-cols-1 gap-4">
-            {availableImages.map((image) => (
-              <div key={image.id} className="flex items-center gap-4 p-4 rounded-lg bg-[#1a1a2e] border border-white/10 hover:bg-[#1e1e32] transition-colors">
-                <Checkbox
-                  checked={image.selected}
-                  onCheckedChange={(checked) => {
-                    setAvailableImages(prev => prev.map(img => 
-                      img.id === image.id ? { ...img, selected: !!checked } : img
-                    ))
-                  }}
-                  className="border-white/30"
-                />
-                <div className="w-20 h-16 bg-black rounded overflow-hidden">
-                  <img src={image.url} alt={image.title} className="w-full h-full object-cover" />
-                </div>
-                <div className="flex-1">
-                  <div className="text-base font-medium text-white/90 mb-1">{image.title}</div>
-                  <div className="text-sm text-white/60">{image.description}</div>
-                </div>
-                <Badge variant="outline" className="text-sm border-white/30 text-white/70 px-3 py-1">
-                  {image.type.toUpperCase()}
-                </Badge>
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-semibold text-white/90 mb-2">Medical Image Analysis</h3>
+              <p className="text-sm text-white/60">AI-powered analysis using BiomedCLIP for comprehensive diagnostic insights</p>
+            </div>
+            {analysisError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                <p className="text-red-400 text-sm">{analysisError}</p>
               </div>
-            ))}
+            )}
           </div>
+
+          {/* Image Categories */}
+          {(() => {
+            const categories = categorizeImages()
+            return (
+              <div className="space-y-8">
+                {/* Histology Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+                    <h4 className="text-lg font-medium text-white/90">Histology & Pathology</h4>
+                    <Badge variant="outline" className="text-xs border-purple-400/30 text-purple-400">
+                      {categories.histology.length} images
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4">
+                    {categories.histology.map((image) => (
+                      <div key={image.id} className="group relative bg-gradient-to-r from-[#1a1a2e] to-[#1e1e32] border border-white/10 rounded-xl p-4 hover:border-purple-400/30 transition-all duration-300">
+                        <div className="flex items-start gap-4">
+                          <Checkbox
+                            checked={image.selected}
+                            onCheckedChange={(checked) => {
+                              setAvailableImages(prev => prev.map(img => 
+                                img.id === image.id ? { ...img, selected: !!checked } : img
+                              ))
+                            }}
+                            className="border-white/30 mt-2"
+                          />
+                          
+                          {/* Image Preview */}
+                          <div className="w-24 h-20 bg-black/50 rounded-lg overflow-hidden border border-white/10">
+                            <img src={image.url} alt={image.title} className="w-full h-full object-cover" />
+                          </div>
+                          
+                          {/* Image Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h5 className="text-base font-medium text-white/90 truncate">{image.title}</h5>
+                              <Badge variant="outline" className="text-xs border-purple-400/30 text-purple-400 px-2 py-0.5">
+                                HISTOLOGY
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-white/60 mb-3">{image.description}</p>
+                            
+                            {/* Analysis Results */}
+                            {analysisResults[image.id] && (
+                              <div className="bg-black/30 rounded-lg p-3 border border-purple-400/20">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Brain className="w-4 h-4 text-purple-400" />
+                                  <span className="text-sm font-medium text-purple-400">AI Analysis</span>
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm text-white/70">Primary Finding:</span>
+                                    <span className="text-sm font-medium text-white/90">
+                                      {analysisResults[image.id].primary_prediction?.condition || 'N/A'}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm text-white/70">Confidence:</span>
+                                    <span className="text-sm font-medium text-green-400">
+                                      {analysisResults[image.id].primary_prediction?.percentage || 'N/A'}
+                                    </span>
+                                  </div>
+                                  {analysisResults[image.id].clinical_insights?.length > 0 && (
+                                    <div className="mt-2 pt-2 border-t border-white/10">
+                                      <p className="text-xs text-white/60">
+                                        {analysisResults[image.id].clinical_insights[0]}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Analyze Button */}
+                          <div className="flex flex-col gap-2">
+                            <Button
+                              onClick={() => analyzeImage(image)}
+                              disabled={analyzingImages.has(image.id)}
+                              className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white border-0 px-4 py-2 text-sm"
+                            >
+                              {analyzingImages.has(image.id) ? (
+                                <div className="flex items-center gap-2">
+                                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                  Analyzing...
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <Sparkles className="w-4 h-4" />
+                                  Analyze
+                                </div>
+                              )}
+                            </Button>
+                            {analysisResults[image.id] && (
+                              <Badge variant="outline" className="text-xs border-green-400/30 text-green-400 px-2 py-1">
+                                ✓ Analyzed
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Radiology Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 bg-cyan-400 rounded-full"></div>
+                    <h4 className="text-lg font-medium text-white/90">Radiology & Imaging</h4>
+                    <Badge variant="outline" className="text-xs border-cyan-400/30 text-cyan-400">
+                      {categories.radiology.length} images
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4">
+                    {categories.radiology.map((image) => (
+                      <div key={image.id} className="group relative bg-gradient-to-r from-[#1a1a2e] to-[#1e1e32] border border-white/10 rounded-xl p-4 hover:border-cyan-400/30 transition-all duration-300">
+                        <div className="flex items-start gap-4">
+                          <Checkbox
+                            checked={image.selected}
+                            onCheckedChange={(checked) => {
+                              setAvailableImages(prev => prev.map(img => 
+                                img.id === image.id ? { ...img, selected: !!checked } : img
+                              ))
+                            }}
+                            className="border-white/30 mt-2"
+                          />
+                          
+                          {/* Image Preview */}
+                          <div className="w-24 h-20 bg-black/50 rounded-lg overflow-hidden border border-white/10">
+                            <img src={image.url} alt={image.title} className="w-full h-full object-cover" />
+                          </div>
+                          
+                          {/* Image Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h5 className="text-base font-medium text-white/90 truncate">{image.title}</h5>
+                              <Badge variant="outline" className="text-xs border-cyan-400/30 text-cyan-400 px-2 py-0.5">
+                                {image.type.toUpperCase()}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-white/60 mb-3">{image.description}</p>
+                            
+                            {/* Analysis Results */}
+                            {analysisResults[image.id] && (
+                              <div className="bg-black/30 rounded-lg p-3 border border-cyan-400/20">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Brain className="w-4 h-4 text-cyan-400" />
+                                  <span className="text-sm font-medium text-cyan-400">AI Analysis</span>
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm text-white/70">Primary Finding:</span>
+                                    <span className="text-sm font-medium text-white/90">
+                                      {analysisResults[image.id].primary_prediction?.condition || 'N/A'}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm text-white/70">Confidence:</span>
+                                    <span className="text-sm font-medium text-green-400">
+                                      {analysisResults[image.id].primary_prediction?.percentage || 'N/A'}
+                                    </span>
+                                  </div>
+                                  {analysisResults[image.id].clinical_insights?.length > 0 && (
+                                    <div className="mt-2 pt-2 border-t border-white/10">
+                                      <p className="text-xs text-white/60">
+                                        {analysisResults[image.id].clinical_insights[0]}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Analyze Button */}
+                          <div className="flex flex-col gap-2">
+                            <Button
+                              onClick={() => analyzeImage(image)}
+                              disabled={analyzingImages.has(image.id)}
+                              className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white border-0 px-4 py-2 text-sm"
+                            >
+                              {analyzingImages.has(image.id) ? (
+                                <div className="flex items-center gap-2">
+                                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                  Analyzing...
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <Sparkles className="w-4 h-4" />
+                                  Analyze
+                                </div>
+                              )}
+                            </Button>
+                            {analysisResults[image.id] && (
+                              <Badge variant="outline" className="text-xs border-green-400/30 text-green-400 px-2 py-1">
+                                ✓ Analyzed
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
         </div>
       )
     },

@@ -1,111 +1,168 @@
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 
 interface VisionAnalysisResult {
-  label: string
-  confidence: number
-  heatmap?: string
+  success: boolean
+  primary_prediction: {
+    condition: string
+    confidence: number
+    percentage: string
+  }
+  top_predictions: Array<{
+    condition: string
+    confidence: number
+    percentage: string
+  }>
+  specialty_analysis: Record<string, Array<{
+    0: string // condition
+    1: number // confidence
+  }>>
+  image_info: {
+    category: string
+    size: string
+    mode: string
+    hash?: string
+  }
+  clinical_insights: string[]
+  analysis_metadata: {
+    model: string
+    conditions_analyzed: number
+    specialties_covered: number
+    processing_time?: string
+  }
+  heatmap_available?: boolean
+  attention_regions?: Array<{
+    region: string
+    attention: number
+  }>
 }
 
-interface VisionAnalysisError {
-  message: string
-  detail?: string
+interface AnalysisResponse {
+  status: string
+  filename: string
+  analysis: VisionAnalysisResult
 }
 
-interface UseVisionAnalysisReturn {
-  analyze: (file: File, withHeatmap?: boolean) => Promise<VisionAnalysisResult>
-  isLoading: boolean
-  error: VisionAnalysisError | null
-  result: VisionAnalysisResult | null
-  clearResult: () => void
-}
+export function useVisionAnalysis() {
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [results, setResults] = useState<Record<string, VisionAnalysisResult>>({})
+  const [error, setError] = useState<string | null>(null)
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_VISION_API_URL || 'http://localhost:8000'
-
-export function useVisionAnalysis(): UseVisionAnalysisReturn {
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<VisionAnalysisError | null>(null)
-  const [result, setResult] = useState<VisionAnalysisResult | null>(null)
-
-  const analyze = useCallback(async (
-    file: File, 
-    withHeatmap: boolean = false
-  ): Promise<VisionAnalysisResult> => {
-    setIsLoading(true)
+  const analyzeImage = async (imageFile: File): Promise<VisionAnalysisResult | null> => {
+    setIsAnalyzing(true)
     setError(null)
-    setResult(null)
 
     try {
-      // Validate file type
-      const allowedTypes = [
-        'application/dicom',
-        'application/octet-stream', // DICOM files often have this MIME type
-        'image/png',
-        'image/jpeg',
-        'image/jpg'
-      ]
-
-      const allowedExtensions = ['.dcm', '.png', '.jpg', '.jpeg']
-      const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'))
-      
-      if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
-        throw new Error(`Unsupported file type: ${file.type}. Allowed types: DICOM (.dcm), PNG, JPEG`)
-      }
-
-      // Create form data
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', imageFile)
 
-      // Choose endpoint
-      const endpoint = withHeatmap ? '/predict-with-heatmap' : '/predict'
-      const url = `${API_BASE_URL}${endpoint}`
-
-      // Make API request
-      const response = await fetch(url, {
+      const apiUrl = process.env.NEXT_PUBLIC_VISION_API_URL || 'http://localhost:8000'
+      const response = await fetch(`${apiUrl}/predict`, {
         method: 'POST',
         body: formData,
       })
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`)
+        throw new Error(`Analysis failed: ${response.statusText}`)
       }
 
-      const analysisResult: VisionAnalysisResult = await response.json()
-
-      // Validate response
-      if (!analysisResult.label || typeof analysisResult.confidence !== 'number') {
-        throw new Error('Invalid response format from vision API')
+      const data: AnalysisResponse = await response.json()
+      
+      if (data.status === 'success' && data.analysis.success) {
+        setResults(prev => ({
+          ...prev,
+          [imageFile.name]: data.analysis
+        }))
+        return data.analysis
+      } else {
+        throw new Error('Analysis failed - invalid response')
       }
-
-      setResult(analysisResult)
-      return analysisResult
 
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred'
-      const visionError: VisionAnalysisError = {
-        message: 'Analysis failed - retry',
-        detail: errorMessage
-      }
-      
-      setError(visionError)
-      throw visionError
-
+      const errorMessage = err instanceof Error ? err.message : 'Analysis failed'
+      setError(errorMessage)
+      console.error('Vision analysis error:', err)
+      return null
     } finally {
-      setIsLoading(false)
+      setIsAnalyzing(false)
     }
-  }, [])
+  }
 
-  const clearResult = useCallback(() => {
-    setResult(null)
+  const analyzeImageWithHeatmap = async (imageFile: File): Promise<VisionAnalysisResult | null> => {
+    setIsAnalyzing(true)
     setError(null)
-  }, [])
+
+    try {
+      const formData = new FormData()
+      formData.append('file', imageFile)
+
+      const apiUrl = process.env.NEXT_PUBLIC_VISION_API_URL || 'http://localhost:8000'
+      const response = await fetch(`${apiUrl}/predict-with-heatmap`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw new Error(`Heatmap analysis failed: ${response.statusText}`)
+      }
+
+      const data: AnalysisResponse = await response.json()
+      
+      if (data.status === 'success' && data.analysis.success) {
+        setResults(prev => ({
+          ...prev,
+          [imageFile.name]: data.analysis
+        }))
+        return data.analysis
+      } else {
+        throw new Error('Heatmap analysis failed - invalid response')
+      }
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Heatmap analysis failed'
+      setError(errorMessage)
+      console.error('Heatmap analysis error:', err)
+      return null
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
+  const getResult = (filename: string): VisionAnalysisResult | null => {
+    return results[filename] || null
+  }
+
+  const clearResults = () => {
+    setResults({})
+    setError(null)
+  }
+
+  const clearError = () => {
+    setError(null)
+  }
+
+  // Backward compatibility aliases
+  const analyze = async (file: File, withHeatmap: boolean = false) => {
+    return withHeatmap ? analyzeImageWithHeatmap(file) : analyzeImage(file)
+  }
+
+  const clearResult = clearResults
+  const isLoading = isAnalyzing
+  const result = results[Object.keys(results)[0]] || null
 
   return {
-    analyze,
-    isLoading,
+    analyzeImage,
+    analyzeImageWithHeatmap,
+    getResult,
+    clearResults,
+    clearError,
+    isAnalyzing,
+    results,
     error,
+    // Backward compatibility
+    analyze,
+    clearResult,
+    isLoading,
     result,
-    clearResult
   }
 }
 
