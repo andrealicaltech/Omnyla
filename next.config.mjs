@@ -9,10 +9,7 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  // Add experimental features for better API handling
-  experimental: {
-    serverComponentsExternalPackages: ['sharp'],
-  },
+  serverExternalPackages: ['sharp'],
 }
 
 export default nextConfig

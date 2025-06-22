@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { DecisionPad } from './DecisionPad'
 import { SessionTimer } from './SessionTimer'
 import { useBoardMode } from './BoardModeContext'
@@ -18,20 +18,32 @@ import {
   Users, Clock, Activity, Maximize2, Minimize2, Eye, FileText, Brain, Dna, 
   Image, BarChart3, Send, Mic, Bot, CheckCircle2, ExternalLink, Presentation,
   Stethoscope, Zap, Target, BookOpen, FlaskConical, Calendar, User, MapPin,
-  Heart, Beaker, Monitor, ChevronDown, ChevronUp
+  Heart, Beaker, Monitor, ChevronDown, ChevronUp, X, Loader2, Sparkles, Square
 } from 'lucide-react'
 import type { Patient } from '@/lib/types'
+import { cn } from '@/lib/utils'
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
+import Anthropic from '@anthropic-ai/sdk';
+import { v4 as uuidv4 } from 'uuid';
+import Vapi from "@vapi-ai/web";
+
+interface CustomWindow extends Window {
+  webkitSpeechRecognition: any;
+  SpeechRecognition: any;
+}
+
+declare const window: CustomWindow;
 
 interface TumorBoardWorkspaceProps {
-  patient: Patient
+  patient: Patient;
 }
 
 interface Message {
-  id: string
-  sender: "user" | "genetics" | "oncology" | "pathology" | "radiology" | "immunotherapy"
-  content: string
-  timestamp: Date
-  agentName?: string
+  id: string;
+  sender: string; // More flexible sender
+  agentName?: string;
+  content: string;
+  timestamp: Date;
 }
 
 interface QuickInsight {
@@ -70,6 +82,27 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
   const [chatInput, setChatInput] = useState("")
   const [currentView, setCurrentView] = useState("CASE OVERVIEW")
   const [showDecisionPad, setShowDecisionPad] = useState(false)
+  
+  // Voice Recorder State
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [transcript, setTranscript] = useState('')
+  const [summary, setSummary] = useState('')
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [recordingTime, setRecordingTime] = useState(0)
+  const [audioLevel, setAudioLevel] = useState(0)
+  const [error, setError] = useState('')
+
+  // Vapi Voice Conversation State
+  const [isVoiceConversationActive, setIsVoiceConversationActive] = useState(false)
+  const [isAISpeaking, setIsAISpeaking] = useState(false)
+  const vapiRef = useRef<Vapi | null>(null)
+
+  const recognitionRef = useRef<any>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const animationRef = useRef<number | null>(null)
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -79,6 +112,7 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
       timestamp: new Date(),
     },
   ])
+  const [isBotTyping, setIsBotTyping] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Enhanced insights with selection capability
@@ -117,33 +151,143 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
     }
   ])
 
-  // Image selection for presentation
+  // Enhanced image management with categorization and AI analysis
   const [availableImages, setAvailableImages] = useState<ImageItem[]>([
+    // Histology Images - as requested by user
+    {
+      id: "histology1",
+      title: "Histology Sample 1",
+      description: "Histological analysis of tissue sample",
+      type: "histology",
+      url: "/medical-images/histology 1.png",
+      selected: true
+    },
+    {
+      id: "histology2", 
+      title: "Histology Sample 2",
+      description: "Secondary tissue histological examination",
+      type: "histology",
+      url: "/medical-images/histology 2.png",
+      selected: true
+    },
+    {
+      id: "histology_chest",
+      title: "Histology Chest",
+      description: "Chest tissue histological analysis",
+      type: "histology", 
+      url: "/medical-images/histology chest.jpg",
+      selected: true
+    },
+    {
+      id: "histology_liver",
+      title: "Histology Liver",
+      description: "Hepatic tissue histological analysis",
+      type: "histology", 
+      url: "/medical-images/histology liver.jpg",
+      selected: true
+    },
+    // MRI Images - as requested by user, grouped with Stomach images
     {
       id: "mri1",
-      title: "Brain MRI - T2 Weighted",
-      description: "Irregular mass with heterogeneous enhancement",
+      title: "MRI Scan - Sequence 1",
+      description: "T1-weighted MRI showing structural details",
       type: "mri",
-      url: "https://sjra.com/wp-content/uploads/2023/05/Side-By-Side-Of-Brain-MRI-Scan-Results.webp",
+      url: "",
       selected: true
     },
     {
-      id: "hist1", 
-      title: "H&E Histopathology",
-      description: "Grade 2 invasive ductal carcinoma",
-      type: "histology",
-      url: "/placeholder.svg?height=400&width=600",
+      id: "mri2",
+      title: "MRI Scan - Sequence 2", 
+      description: "T2-weighted MRI for enhanced contrast",
+      type: "mri",
+      url: "/medical-images/mri 2.png",
+      selected: true
+    },
+    // Stomach Images - grouped with MRI as requested
+    {
+      id: "stomach1",
+      title: "Stomach Imaging - Sample 1",
+      description: "Gastric tissue analysis",
+      type: "mri",
+      url: "/medical-images/Stomach 1.png",
       selected: true
     },
     {
-      id: "ct1",
-      title: "Chest CT Follow-up",
-      description: "Post-treatment response assessment",
-      type: "ct",
-      url: "/placeholder.svg?height=400&width=600",
-      selected: false
+      id: "stomach2",
+      title: "Stomach Imaging - Sample 2", 
+      description: "Additional gastric tissue examination",
+      type: "mri",
+      url: "/medical-images/Stomach 2.png",
+      selected: true
     }
   ])
+
+  // AI Analysis state
+  const [analysisResults, setAnalysisResults] = useState<Record<string, any>>({})
+  const [analyzingImages, setAnalyzingImages] = useState<Set<string>>(new Set())
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
+
+  // Categorize images by type - MRI section includes Stomach images as requested
+  const categorizeImages = () => {
+    const categories = {
+      histology: availableImages.filter(img => img.type === 'histology'),
+      radiology: availableImages.filter(img => ['mri', 'ct', 'pet'].includes(img.type)),
+    }
+    return categories
+  }
+
+  // Handle AI analysis of individual images using the vision analysis hook
+  const analyzeImage = async (imageItem: ImageItem) => {
+    setAnalyzingImages(prev => new Set([...prev, imageItem.id]))
+    setAnalysisError(null)
+
+    try {
+      // Convert image URL to file for analysis
+      const response = await fetch(imageItem.url)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.statusText}`)
+      }
+      
+      const blob = await response.blob()
+      const file = new File([blob], `${imageItem.id}.${blob.type.split('/')[1]}`, { type: blob.type })
+
+      // Call vision API directly
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const apiUrl = process.env.NEXT_PUBLIC_VISION_API_URL || 'http://localhost:8000'
+      const analysisResponse = await fetch(`${apiUrl}/predict`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!analysisResponse.ok) {
+        throw new Error(`Vision API error: ${analysisResponse.status} ${analysisResponse.statusText}`)
+      }
+
+      const result = await analysisResponse.json()
+      
+      if (result.status === 'success' && result.analysis) {
+        setAnalysisResults(prev => ({
+          ...prev,
+          [imageItem.id]: result.analysis
+        }))
+      } else {
+        throw new Error('Invalid analysis response from vision API')
+      }
+
+    } catch (error) {
+      console.error('Analysis error:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Analysis failed'
+      setAnalysisError(errorMessage)
+    } finally {
+      setAnalyzingImages(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(imageItem.id)
+        return newSet
+      })
+    }
+  }
 
   // Lean tab content instead of full dashboard
   const leanTabs: LeanTabContent[] = [
@@ -216,39 +360,235 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
     },
     {
       id: "IMAGES",
-      name: "Imaging", 
-      summary: "MRI shows 2.5cm mass with satellite lesions, partial treatment response",
-      keyPoints: ["Primary tumor 30% reduction", "No new lesions", "Stable lymphadenopathy"],
+      name: "Medical Imaging", 
+      summary: "Comprehensive image analysis with AI-powered diagnostics",
+      keyPoints: ["Histology & Radiology", "BiomedCLIP Analysis", "Multi-specialty Insights"],
       selected: true,
       icon: <Monitor className="w-4 h-4" />,
       content: (
         <div className="space-y-6">
-          <div className="text-base text-white/90 mb-4">Select images for presentation:</div>
-          <div className="grid grid-cols-1 gap-4">
-            {availableImages.map((image) => (
-              <div key={image.id} className="flex items-center gap-4 p-4 rounded-lg bg-[#1a1a2e] border border-white/10 hover:bg-[#1e1e32] transition-colors">
-                <Checkbox
-                  checked={image.selected}
-                  onCheckedChange={(checked) => {
-                    setAvailableImages(prev => prev.map(img => 
-                      img.id === image.id ? { ...img, selected: !!checked } : img
-                    ))
-                  }}
-                  className="border-white/30"
-                />
-                <div className="w-20 h-16 bg-black rounded overflow-hidden">
-                  <img src={image.url} alt={image.title} className="w-full h-full object-cover" />
-                </div>
-                <div className="flex-1">
-                  <div className="text-base font-medium text-white/90 mb-1">{image.title}</div>
-                  <div className="text-sm text-white/60">{image.description}</div>
-                </div>
-                <Badge variant="outline" className="text-sm border-white/30 text-white/70 px-3 py-1">
-                  {image.type.toUpperCase()}
-                </Badge>
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-semibold text-white/90 mb-2">Medical Image Analysis</h3>
+              <p className="text-sm text-white/60">AI-powered analysis using BiomedCLIP for comprehensive diagnostic insights</p>
+            </div>
+            {analysisError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                <p className="text-red-400 text-sm">{analysisError}</p>
               </div>
-            ))}
+            )}
           </div>
+
+          {/* Image Categories */}
+          {(() => {
+            const categories = categorizeImages()
+            return (
+              <div className="space-y-8">
+                {/* Histology Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+                    <h4 className="text-lg font-medium text-white/90">Histology & Pathology</h4>
+                    <Badge variant="outline" className="text-xs border-purple-400/30 text-purple-400">
+                      {categories.histology.length} images
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4">
+                    {categories.histology.map((image) => (
+                      <div key={image.id} className="group relative bg-gradient-to-r from-[#1a1a2e] to-[#1e1e32] border border-white/10 rounded-xl p-4 hover:border-purple-400/30 transition-all duration-300">
+                        <div className="flex items-start gap-4">
+                          <Checkbox
+                            checked={image.selected}
+                            onCheckedChange={(checked) => {
+                              setAvailableImages(prev => prev.map(img => 
+                                img.id === image.id ? { ...img, selected: !!checked } : img
+                              ))
+                            }}
+                            className="border-white/30 mt-2"
+                          />
+                          
+                          {/* Image Preview */}
+                          <div className="w-24 h-20 bg-black/50 rounded-lg overflow-hidden border border-white/10">
+                            <img src={image.url} alt={image.title} className="w-full h-full object-cover" />
+                          </div>
+                          
+                          {/* Image Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h5 className="text-base font-medium text-white/90 truncate">{image.title}</h5>
+                              <Badge variant="outline" className="text-xs border-purple-400/30 text-purple-400 px-2 py-0.5">
+                                HISTOLOGY
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-white/60 mb-3">{image.description}</p>
+                            
+                            {/* Analysis Results */}
+                            {analysisResults[image.id] && (
+                              <div className="bg-black/30 rounded-lg p-3 border border-purple-400/20">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Brain className="w-4 h-4 text-purple-400" />
+                                  <span className="text-sm font-medium text-purple-400">AI Analysis</span>
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm text-white/70">Primary Finding:</span>
+                                    <span className="text-sm font-medium text-white/90">
+                                      {analysisResults[image.id].primary_prediction?.condition || 'N/A'}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm text-white/70">Confidence:</span>
+                                    <span className="text-sm font-medium text-green-400">
+                                      {analysisResults[image.id].primary_prediction?.percentage || 'N/A'}
+                                    </span>
+                                  </div>
+                                  {analysisResults[image.id].clinical_insights?.length > 0 && (
+                                    <div className="mt-2 pt-2 border-t border-white/10">
+                                      <p className="text-xs text-white/60">
+                                        {analysisResults[image.id].clinical_insights[0]}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Analyze Button */}
+                          <div className="flex flex-col gap-2">
+                            <Button
+                              onClick={() => analyzeImage(image)}
+                              disabled={analyzingImages.has(image.id)}
+                              className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white border-0 px-4 py-2 text-sm"
+                            >
+                              {analyzingImages.has(image.id) ? (
+                                <div className="flex items-center gap-2">
+                                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                  Analyzing...
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <Sparkles className="w-4 h-4" />
+                                  Analyze
+                                </div>
+                              )}
+                            </Button>
+                            {analysisResults[image.id] && (
+                              <Badge variant="outline" className="text-xs border-green-400/30 text-green-400 px-2 py-1">
+                                ✓ Analyzed
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Radiology Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 bg-cyan-400 rounded-full"></div>
+                    <h4 className="text-lg font-medium text-white/90">Radiology & Imaging</h4>
+                    <Badge variant="outline" className="text-xs border-cyan-400/30 text-cyan-400">
+                      {categories.radiology.length} images
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4">
+                    {categories.radiology.map((image) => (
+                      <div key={image.id} className="group relative bg-gradient-to-r from-[#1a1a2e] to-[#1e1e32] border border-white/10 rounded-xl p-4 hover:border-cyan-400/30 transition-all duration-300">
+                        <div className="flex items-start gap-4">
+                          <Checkbox
+                            checked={image.selected}
+                            onCheckedChange={(checked) => {
+                              setAvailableImages(prev => prev.map(img => 
+                                img.id === image.id ? { ...img, selected: !!checked } : img
+                              ))
+                            }}
+                            className="border-white/30 mt-2"
+                          />
+                          
+                          {/* Image Preview */}
+                          <div className="w-24 h-20 bg-black/50 rounded-lg overflow-hidden border border-white/10">
+                            <img src={image.url} alt={image.title} className="w-full h-full object-cover" />
+                          </div>
+                          
+                          {/* Image Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h5 className="text-base font-medium text-white/90 truncate">{image.title}</h5>
+                              <Badge variant="outline" className="text-xs border-cyan-400/30 text-cyan-400 px-2 py-0.5">
+                                {image.type.toUpperCase()}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-white/60 mb-3">{image.description}</p>
+                            
+                            {/* Analysis Results */}
+                            {analysisResults[image.id] && (
+                              <div className="bg-black/30 rounded-lg p-3 border border-cyan-400/20">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Brain className="w-4 h-4 text-cyan-400" />
+                                  <span className="text-sm font-medium text-cyan-400">AI Analysis</span>
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm text-white/70">Primary Finding:</span>
+                                    <span className="text-sm font-medium text-white/90">
+                                      {analysisResults[image.id].primary_prediction?.condition || 'N/A'}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm text-white/70">Confidence:</span>
+                                    <span className="text-sm font-medium text-green-400">
+                                      {analysisResults[image.id].primary_prediction?.percentage || 'N/A'}
+                                    </span>
+                                  </div>
+                                  {analysisResults[image.id].clinical_insights?.length > 0 && (
+                                    <div className="mt-2 pt-2 border-t border-white/10">
+                                      <p className="text-xs text-white/60">
+                                        {analysisResults[image.id].clinical_insights[0]}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Analyze Button */}
+                          <div className="flex flex-col gap-2">
+                            <Button
+                              onClick={() => analyzeImage(image)}
+                              disabled={analyzingImages.has(image.id)}
+                              className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white border-0 px-4 py-2 text-sm"
+                            >
+                              {analyzingImages.has(image.id) ? (
+                                <div className="flex items-center gap-2">
+                                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                  Analyzing...
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <Sparkles className="w-4 h-4" />
+                                  Analyze
+                                </div>
+                              )}
+                            </Button>
+                            {analysisResults[image.id] && (
+                              <Badge variant="outline" className="text-xs border-green-400/30 text-green-400 px-2 py-1">
+                                ✓ Analyzed
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
         </div>
       )
     },
@@ -355,6 +695,338 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
     }
   ]
 
+  // Initialize Vapi
+  useEffect(() => {
+    const vapiKey = process.env.NEXT_PUBLIC_VAPI_API_KEY;
+    if (vapiKey) {
+      const vapiInstance = new Vapi(vapiKey);
+      vapiRef.current = vapiInstance;
+
+      vapiInstance.on('call-start', () => {
+        console.log('✅ Vapi call started successfully');
+        setIsVoiceConversationActive(true);
+        setIsAISpeaking(false);
+        setError(''); // Clear any previous errors
+      });
+
+      vapiInstance.on('call-end', (endData?: any) => {
+        console.log('📞 Vapi call ended:', endData);
+        setIsVoiceConversationActive(false);
+        setIsAISpeaking(false);
+        
+        // Handle different end reasons
+        if (endData?.reason) {
+          console.log('📞 Call end reason:', endData.reason);
+          
+          if (endData.reason === 'user-ended') {
+            console.log('✅ User ended the call normally');
+          } else if (endData.reason === 'assistant-ended') {
+            console.log('🤖 Assistant ended the call');
+          } else if (endData.reason === 'pipeline-error-openai-voice-failed') {
+            setError('Voice service temporarily unavailable. Please try again.');
+          } else if (endData.reason === 'pipeline-error-exceeded-max-duration') {
+            setError('Call duration limit reached. Please start a new conversation.');
+          } else if (endData.reason === 'pipeline-error-exceeded-silence-timeout') {
+            setError('Call ended due to silence. Please start a new conversation.');
+          } else if (endData.reason.includes('ejection')) {
+            console.log(' कॉल निकाल दी गई।');
+            setError('Connection lost. This can happen due to network issues or assistant configuration. Please try again.');
+          } else {
+            setError(`Call ended: ${endData.reason}. Please try again.`);
+          }
+        }
+      });
+
+      vapiInstance.on('speech-start', () => {
+        console.log('🗣️ AI started speaking');
+        setIsAISpeaking(true);
+      });
+      
+      vapiInstance.on('speech-end', () => {
+        console.log('🤐 AI stopped speaking');
+        setIsAISpeaking(false);
+      });
+
+      vapiInstance.on('message', (message) => {
+        console.log('📨 Vapi message:', message);
+        
+        if (message.type === 'transcript' && message.role === 'user' && message.transcript) {
+          const userMessage: Message = {
+            id: uuidv4(),
+            sender: "user",
+            content: message.transcript,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, userMessage]);
+        } else if (message.type === 'assistant_message' && message.message) {
+           const botMessage: Message = {
+            id: message.id || uuidv4(),
+            sender: "bot",
+            agentName: "Dr. AI Assistant",
+            content: message.message.content,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, botMessage]);
+        }
+      });
+      
+      vapiInstance.on('error', (error) => {
+        console.error('❌ Vapi Error Object:', error);
+        try {
+          console.error('❌ Vapi Error (JSON):', JSON.stringify(error, null, 2));
+        } catch {
+          console.error('❌ Vapi Error could not be stringified.');
+        }
+        const errorMessage = error?.message || (typeof error === 'object' && Object.keys(error).length > 0 ? `Received non-standard error object: ${JSON.stringify(error)}` : 'Unknown error. The error object was empty.');
+        setError(`Voice error: ${errorMessage}. Please check microphone permissions and try again.`);
+        setIsVoiceConversationActive(false);
+      });
+
+    }
+    
+    return () => {
+      vapiRef.current?.stop();
+    }
+  }, []);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const analyzeAudio = () => {
+    if (!analyserRef.current) return
+
+    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount)
+    analyserRef.current.getByteFrequencyData(dataArray)
+    
+    const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length
+    setAudioLevel(average / 255) // Normalize to 0-1
+
+    if (isRecording) {
+      animationRef.current = requestAnimationFrame(analyzeAudio)
+    }
+  }
+
+  const startRecording = async () => {
+    try {
+      setError('')
+      
+      // Request microphone permission
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      
+      // Setup audio analysis
+      audioContextRef.current = new AudioContext()
+      const source = audioContextRef.current.createMediaStreamSource(stream)
+      analyserRef.current = audioContextRef.current.createAnalyser()
+      analyserRef.current.fftSize = 256
+      source.connect(analyserRef.current)
+
+      // Setup speech recognition
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+      if (!SpeechRecognition) {
+        setError("Speech recognition is not supported in this browser.")
+        return
+      }
+      recognitionRef.current = new SpeechRecognition()
+      recognitionRef.current.continuous = true
+      recognitionRef.current.interimResults = true
+      recognitionRef.current.lang = 'en-US'
+
+      recognitionRef.current.onresult = (event: any) => {
+        let finalTranscript = ''
+        let interimTranscript = ''
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript
+          } else {
+            interimTranscript += transcript
+          }
+        }
+
+        // Only append final transcript to avoid duplication
+        // Show interim transcript temporarily for live feedback
+        if (finalTranscript) {
+          setTranscript(prev => prev + finalTranscript)
+        }
+      }
+
+      recognitionRef.current.start()
+
+      setIsRecording(true)
+      setRecordingTime(0)
+      setTranscript('')
+      setSummary('')
+
+      // Start timer
+      timerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1)
+      }, 1000)
+
+      // Start audio analysis
+      analyzeAudio()
+
+    } catch (err) {
+      setError('Failed to access microphone. Please check permissions.')
+      console.error('Error starting recording:', err)
+    }
+  }
+
+  const stopRecording = () => {
+    setIsRecording(false)
+    
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+    }
+    
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+    }
+
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current)
+    }
+
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+    }
+
+    setAudioLevel(0)
+
+    // Generate summary if transcript exists
+    if (transcript.trim()) {
+      generateSummary(transcript)
+    }
+  }
+
+  const generateSummary = async (currentTranscript: string) => {
+    const anthropic = new Anthropic({
+      apiKey: process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY,
+      dangerouslyAllowBrowser: true,
+    });
+
+    if (!currentTranscript.trim()) return
+
+    setIsProcessing(true)
+    try {
+      const msg = await anthropic.messages.create({
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 1500,
+        temperature: 0.7,
+        system: `You are an AI assistant that creates comprehensive summaries from voice recordings.
+
+Your primary goal is to format the output as a professional medical report, following the structure below. However, even if the transcript does not contain specific details for every section, you must still generate a summary of the available text. Do not refuse to generate a summary based on the content.
+
+If the content is not related to a tumor board, adapt the headings and summarize the key points discussed as best as you can.
+
+# 🏥 Meeting Summary
+
+## 📝 Key Discussion Points
+- [Main discussion points]
+
+## 🎯 Decisions & Action Items
+- [Decisions made and follow-up actions]
+
+## 🔬 Other Details
+- [Any other relevant information]
+
+Use professional language and clear formatting.`,
+        messages: [
+          {
+            role: 'user',
+            content: `Please summarize this tumor board discussion transcript:\n\n${currentTranscript}`
+          }
+        ],
+      });
+
+      const responseText = msg.content
+        .map(block => ('text' in block ? block.text : ''))
+        .join('');
+
+      if (responseText) {
+        setSummary(responseText);
+      } else {
+        throw new Error('No text content in response from Anthropic');
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Failed to generate summary');
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  // Voice Conversation Functions
+  const startVoiceConversation = async () => {
+    console.log('🎤 Starting voice conversation...');
+    
+    // Check microphone permissions first
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('🎙️ Microphone access granted');
+    } catch (micError) {
+      console.error('🚫 Microphone access denied:', micError);
+      setError('Microphone access denied. Please allow microphone permissions and try again.');
+      return;
+    }
+    
+    const assistantId = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID;
+    if (!assistantId) {
+      console.error('❌ Vapi Assistant ID is not configured.');
+      setError("Vapi Assistant ID is not configured.");
+      return;
+    }
+
+    console.log('📋 Building patient context...');
+    const patientContext = `
+Patient: ${patient.name || 'Unknown'}, Age: ${patient.age || 'Unknown'}, Sex: ${patient.sex || 'Unknown'}
+Diagnosis: ${patient.diagnosis || 'Unknown'}
+Stage: ${patient.tumor_stage || 'Unknown'}
+Case Summary: ${patient.case_overview?.summary || 'No summary available'}
+Key Biomarkers: ${patient.biomarkers?.map((b: any) => `${b.name}: ${b.result}`).join(', ') || 'No biomarkers available'}
+    `.trim();
+    
+    console.log('🚀 Starting Vapi conversation with Assistant ID only (no overrides)...');
+    console.log('📞 Vapi instance:', vapiRef.current ? 'Ready' : 'Not initialized');
+    
+    try {
+      setError('');
+      // Diagnostic step: Call the assistant by ID without any overrides.
+      // This will confirm if the overrides are the source of the ejection issue.
+      vapiRef.current?.start(assistantId);
+      console.log('✅ Vapi start called successfully');
+    } catch (error) {
+      console.error('❌ Error starting Vapi:', error);
+      setError(`Failed to start voice conversation: ${error}`);
+    }
+  };
+
+  const stopVoiceConversation = () => {
+    console.log('🛑 Stopping voice conversation...');
+    try {
+      vapiRef.current?.stop();
+      setIsVoiceConversationActive(false);
+      setIsAISpeaking(false);
+      setError(''); // Clear any errors
+      console.log('✅ Voice conversation stopped successfully');
+    } catch (error) {
+      console.error('❌ Error stopping voice conversation:', error);
+    }
+  };
+
+  const speakAIResponse = async (text: string) => {
+    if (!isVoiceConversationActive) return;
+
+    try {
+      vapiRef.current?.say(text);
+    } catch (error) {
+      console.error('Failed to speak AI response:', error);
+    }
+  };
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
@@ -424,34 +1096,103 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
     }
   }
 
-  const handleSendMessage = () => {
-    if (!chatInput.trim()) return
-
-    // Add user message
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      sender: "user",
+  const handleSendMessage = async () => {
+    if (chatInput.trim() === "") return
+    const newMessage = {
+      id: uuidv4(),
+      sender: "user" as const,
       content: chatInput,
       timestamp: new Date(),
     }
-    setMessages(prev => [...prev, userMessage])
-
-    const currentInput = chatInput
+    setMessages(prev => [...prev, newMessage])
     setChatInput("")
+    setIsBotTyping(true)
 
-    // Trigger appropriate agent response
-    setTimeout(() => {
-      const response = getAgentResponse(currentInput)
-      setMessages(prev => [...prev, response])
+    // --- Construct the full context for Claude ---
+    const context = `
+      # Patient Information
+      - Name: ${patient.name}
+      - Age: ${patient.age}
+      - Sex: ${patient.sex}
+      - Diagnosis: ${patient.diagnosis}
+      - Stage: ${patient.tumor_stage}
 
-      // Sometimes trigger follow-up from another agent
-      if (Math.random() > 0.7) {
-        setTimeout(() => {
-          const followUp = getAgentResponse(currentInput, "oncology")
-          setMessages(prev => [...prev, followUp])
-        }, 2000)
+      # Case Overview
+      ${patient.case_overview?.summary || 'No case overview available'}
+
+      # Biomarkers
+      ${patient.biomarkers?.map((b: { name: string; result: string; status: string; }) => `- ${b.name}: ${b.result} (Status: ${b.status})`).join('\n') || 'No biomarkers available'}
+
+      # Image Analysis Results
+      ${Object.entries(analysisResults).map(([image, result]) => 
+        `## Image: ${image}\n- AI Finding: ${(result as any).finding}\n- AI Confidence: ${((result as any).confidence * 100).toFixed(1)}%`
+      ).join('\n')}
+
+      # Previous Conversation
+      ${messages.map(m => `${m.agentName || m.sender}: ${m.content}`).join('\n')}
+    `;
+
+    // --- Call Claude API ---
+    const anthropic = new Anthropic({
+      apiKey: process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY,
+      dangerouslyAllowBrowser: true,
+    });
+
+    try {
+      const msg = await anthropic.messages.create({
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 1500,
+        temperature: 0.7,
+        system: `You are a team of AI medical specialists collaborating on a tumor board. Your team consists of Dr. AI Genetics, Dr. AI Radiology, and Dr. AI Oncology. Based on the comprehensive patient data provided below, answer the user's questions. Always respond in character as the most relevant AI specialist. Start your response with your name (e.g., "Dr. AI Radiology: ...").
+
+        Here is the full case context:
+        ${context}`,
+        messages: [
+          {
+            role: 'user',
+            content: chatInput
+          }
+        ],
+      });
+
+      const responseText = msg.content
+        .map(block => ('text' in block ? block.text : ''))
+        .join('');
+      
+      if (responseText) {
+        const [agentName, ...contentParts] = responseText.split(': ');
+        const content = contentParts.join(': ');
+
+              const botMessage = {
+        id: uuidv4(),
+        sender: "bot" as const,
+        agentName: agentName || "Dr. AI Assistant",
+        content: content.trim(),
+        timestamp: new Date(),
       }
-    }, 1000)
+      setMessages(prev => [...prev, botMessage])
+
+      // Speak the AI response if voice conversation is not active
+      if (!isVoiceConversationActive && vapiRef.current) {
+        await speakAIResponse(content.trim());
+      }
+      } else {
+        throw new Error('No text content in response from Anthropic');
+      }
+
+    } catch (err) {
+      console.error(err);
+      const errorMessage = {
+        id: uuidv4(),
+        sender: "bot" as const,
+        agentName: "System",
+        content: "Sorry, I encountered an error trying to get a response. Please check the console.",
+        timestamp: new Date(),
+      }
+      setMessages(prev => [...prev, errorMessage])
+    } finally {
+      setIsBotTyping(false)
+    }
   }
 
   const handleTabChange = (tab: string) => {
@@ -619,38 +1360,28 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
         {/* Chat Messages */}
         <div className="flex-1 p-4 overflow-y-auto custom-scrollbar">
           <div className="space-y-4">
-            {messages.map((message) => (
-              <div key={message.id} className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`flex max-w-[90%] ${
-                  message.sender === "user"
-                    ? "bg-[#4a6bff] rounded-l-lg rounded-tr-lg"
-                    : "bg-[#1a1a30] rounded-r-lg rounded-tl-lg border border-white/10"
-                } p-3`}>
-                  {message.sender !== "user" && (
-                    <BotAvatar 
-                      type={message.sender as any} 
-                      size="sm" 
-                      className="mr-2 flex-shrink-0"
-                    />
-                  )}
-                  <div className="flex-1">
-                    {message.agentName && (
-                      <div className="text-xs text-white/50 mb-1">{message.agentName}</div>
-                    )}
-                    <p className="text-xs text-white/90 leading-relaxed">{message.content}</p>
-                    <div className="text-xs text-white/40 mt-1">
-                      {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                  </div>
+            {messages.map((msg) => (
+              <div key={msg.id} className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
+                <div className={cn("max-w-[70%] p-3 rounded-lg", msg.sender === 'user' ? "bg-blue-600 text-white rounded-br-none" : "bg-slate-700 text-slate-200 rounded-bl-none")}>
+                  {msg.sender !== 'user' && <p className="font-bold text-green-400 mb-1">{msg.agentName}</p>}
+                  <p className="text-sm leading-relaxed">{msg.content}</p>
+                  <p className="text-xs text-slate-400 mt-2 text-right">{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
               </div>
             ))}
-            <div ref={messagesEndRef} />
+            {isBotTyping && (
+              <div ref={messagesEndRef} />
+            )}
           </div>
         </div>
 
         {/* Chat Input */}
         <div className="p-4 border-t border-white/10">
+          {error && (
+            <div className="mb-2 p-2 bg-red-500/20 border border-red-500/30 rounded text-red-400 text-xs">
+              {error}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <Textarea
               value={chatInput}
@@ -666,8 +1397,22 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
               }}
             />
             <div className="flex flex-col gap-1">
-              <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                <Mic className="w-3 h-3 text-white/70" />
+              <Button 
+                size="sm" 
+                onClick={isVoiceConversationActive ? stopVoiceConversation : startVoiceConversation}
+                className={cn(
+                  "h-8 w-8 p-0",
+                  isVoiceConversationActive 
+                    ? "bg-red-500 hover:bg-red-600" 
+                    : "bg-green-500 hover:bg-green-600"
+                )}
+                title={isVoiceConversationActive ? "Stop voice conversation" : "Start voice conversation"}
+              >
+                {isVoiceConversationActive ? (
+                  <Square className="w-3 h-3" />
+                ) : (
+                  <Mic className="w-3 h-3" />
+                )}
               </Button>
               <Button size="sm" onClick={handleSendMessage} className="h-8 w-8 p-0 bg-[#4a6bff] hover:bg-[#3a5bef]">
                 <Send className="w-3 h-3" />
@@ -691,6 +1436,18 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
                   <span>Session: {Math.floor(sessionTimer / 60).toString().padStart(2, '0')}:{(sessionTimer % 60).toString().padStart(2, '0')}</span>
                   <span>Attendees: {attendees.length}</span>
                   <span>AI Agents: 5 Active</span>
+                  {isVoiceConversationActive && (
+                    <span className="text-green-400 flex items-center gap-1">
+                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                      Voice Active
+                    </span>
+                  )}
+                  {isAISpeaking && (
+                    <span className="text-blue-400 flex items-center gap-1">
+                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+                      AI Speaking
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -830,6 +1587,86 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
           )}
         </div>
       </main>
+
+      {/* Floating Voice Recorder Interface */}
+      {showVoiceRecorder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-gradient-to-br from-purple-900 via-blue-900 to-purple-900 rounded-3xl p-8 max-w-lg w-full mx-4 border border-white/20 shadow-2xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <Brain className="w-8 h-8 text-cyan-400" />
+                  <Sparkles className="w-4 h-4 text-purple-400 absolute -top-1 -right-1 animate-pulse" />
+                </div>
+                <h3 className="text-xl font-bold text-white">Neural Voice Recorder</h3>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  // Close panel but keep recording if recording is active
+                  setShowVoiceRecorder(false)
+                }}
+                className="text-white/70 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+
+            {/* Recording Interface */}
+            <div className="text-center mb-6 flex-shrink-0">
+              {/* Recording Timer */}
+              <div className="mb-4">
+                <div className="text-2xl font-mono text-cyan-400 font-bold">
+                  {formatTime(recordingTime)}
+                </div>
+                <div className="text-sm text-white/60 mt-1">Recording Time</div>
+              </div>
+
+              {/* Recording Button */}
+              <div className="relative mb-6">
+                <Button
+                  onClick={isRecording ? stopRecording : startRecording}
+                  disabled={isProcessing}
+                  className={cn(
+                    "w-24 h-24 rounded-full text-white font-semibold transition-all duration-300 relative overflow-hidden",
+                    isRecording
+                      ? "bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 animate-pulse shadow-lg shadow-red-500/30"
+                      : "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 hover:scale-105 shadow-lg shadow-cyan-500/30"
+                  )}
+                >
+                  {isRecording ? (
+                    <Square className="w-8 h-8" />
+                  ) : (
+                    <Mic className="w-8 h-8" />
+                  )}
+                  
+                  {/* Pulse animation */}
+                  {isRecording && (
+                    <div className="absolute inset-0 rounded-full border-4 border-white/30 animate-ping" />
+                  )}
+                </Button>
+
+                {/* Audio Level Visualization */}
+                {isRecording && (
+                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 flex gap-1">
+                    {[...Array(6)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="w-1.5 bg-gradient-to-t from-cyan-500 to-blue-500 rounded-full transition-all duration-150"
+                        style={{
+                          height: `${Math.max(3, audioLevel * 30 + Math.random() * 8)}px`
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
-} 
+}

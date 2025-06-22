@@ -5,15 +5,15 @@ import { Toaster } from "sonner"
 import { ErrorBoundary } from "@/components/ui/error-boundary"
 
 export const metadata = {
-  title: "Nila Genomics - AI-Powered Genomic Analysis Platform",
-  description: "Advanced genomic analysis platform with AI-powered pathology assistance, tumor board collaboration, and pharmacogenomic insights for precision medicine.",
-  keywords: "genomics, AI pathology, tumor board, pharmacogenomics, precision medicine, VCF analysis, biomarkers",
-  authors: [{ name: "Nila Genomics Team" }],
+  title: "Omnyla - AI-Powered Medical Assistant",
+  description: "Advanced AI-powered medical assistant for precision healthcare, genomic analysis, and medical collaboration.",
+  keywords: "AI medical assistant, healthcare, genomics, precision medicine, VCF analysis, medical collaboration, tumor board",
+  authors: [{ name: "Omnyla Team" }],
   robots: "index, follow",
   generator: 'v0.dev',
   openGraph: {
-    title: "Nila Genomics - AI-Powered Genomic Analysis",
-    description: "Advanced genomic analysis platform with AI-powered pathology assistance and tumor board collaboration.",
+    title: "Omnyla - AI-Powered Medical Assistant",
+    description: "Advanced AI-powered medical assistant for precision healthcare and genomic analysis.",
     type: "website",
     locale: "en_US",
   }
