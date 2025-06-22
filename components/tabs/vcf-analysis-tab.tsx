@@ -234,6 +234,27 @@ export function VCFAnalysisTab({ patient }: VCFAnalysisTabProps) {
             </Card>
           </div>
 
+          {/* Fetch.ai Agent Status */}
+          {analysisResult.agentStatus && (
+            <Card className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 border-purple-500/30">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="text-lg">🤖</div>
+                  <div>
+                    <div className="text-sm font-medium text-white/90">
+                      {analysisResult.agentStatus}
+                    </div>
+                    {analysisResult.agentReport && (
+                      <div className="text-xs text-white/60 mt-1">
+                        Agent Response: {analysisResult.agentReport.status === 'success' ? '✅ Complete' : '⚠️ Processing'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Drug Recommendations Table */}
           <Card className="bg-[#1a1a2e] border-white/10">
             <CardHeader className="flex flex-row items-center justify-between">

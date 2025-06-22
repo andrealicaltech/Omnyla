@@ -1,0 +1,11 @@
+uagents==0.22.5
+cosmpy
+anthropic
+pydantic>=2
+requests
+tqdm 
+agentverse
+colorama
+json-repair
+Flask
+PyYAML 

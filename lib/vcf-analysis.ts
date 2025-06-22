@@ -2,13 +2,16 @@ import VCF from '@gmod/vcf'
 import { distance } from '@turf/distance'
 import { point } from '@turf/helpers'
 
-export interface VCFAnalysisResult {
+export type VCFAnalysisResult = {
   drugs: DrugRecommendation[]
   trials: ClinicalTrial[]
-  variants: VCFVariant[]
+  variants: any[]
   fileName: string
   numVariants: number
   processingTime: number
+  report?: string
+  agentReport?: any
+  agentStatus?: string
 }
 
 export interface DrugRecommendation {

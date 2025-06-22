@@ -3,3 +3,10 @@ uvicorn
 pandas
 python-multipart
 vcfpy 
+uagents
+cosmpy
+anthropic
+pydantic>=2
+requests
+tqdm
+python-dotenv 

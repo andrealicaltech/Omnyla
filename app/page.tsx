@@ -61,9 +61,12 @@ export default function LandingPage() {
           {/* Hero Section */}
           <div className="max-w-7xl mx-auto mb-16">
 
-            <h2 className="text-6xl md:text-8xl font-bold mb-4 bg-gradient-to-r from-sky-300 to-white bg-clip-text text-transparent">
-              Omnyla
-            </h2>
+            {/* Big Omnyla with Logo */}
+            <div className="flex items-center justify-center mb-8">
+              <h1 className="text-6xl md:text-8xl lg:text-9xl font-bold bg-gradient-to-r from-cyan-300 via-sky-200 to-blue-200 bg-clip-text text-transparent tracking-tight drop-shadow-2xl">
+                Omnyla
+              </h1>
+            </div>
 
             <p className="text-xl md:text-2xl font-light text-white max-w-3xl mx-auto leading-relaxed mb-12">
               AI Copilot for Cancer Teams

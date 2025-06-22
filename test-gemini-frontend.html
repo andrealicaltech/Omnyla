@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Vision Integration Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a30 0%, #2d1b69 100%);
+            color: white;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(26, 26, 48, 0.8);
+            border-radius: 16px;
+            padding: 32px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .header h1 {
+            background: linear-gradient(135deg, #a855f7, #ec4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin: 0;
+            font-size: 2.5rem;
+            font-weight: bold;
+        }
+        .test-section {
+            background: rgba(168, 85, 247, 0.1);
+            border: 1px solid rgba(168, 85, 247, 0.3);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .file-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px dashed rgba(168, 85, 247, 0.5);
+            border-radius: 8px;
+            background: rgba(168, 85, 247, 0.05);
+            color: white;
+            margin-bottom: 16px;
+        }
+        .button {
+            background: linear-gradient(135deg, #a855f7, #ec4899);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin: 8px;
+        }
+        .button:hover {
+            transform: translateY(-1px);
+        }
+        .button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ffffff33;
+            border-top: 2px solid #ffffff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .result {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 16px;
+        }
+        .error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 16px;
+        }
+        .explanation-text {
+            line-height: 1.6;
+            font-size: 16px;
+        }
+        .sample-images {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .sample-image {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: border-color 0.2s;
+        }
+        .sample-image:hover {
+            border-color: rgba(168, 85, 247, 0.5);
+        }
+        .sample-image img {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧠 Gemini Vision Test</h1>
+            <p>Test the Gemini AI integration for medical image analysis</p>
+        </div>
+
+        <div class="test-section">
+            <h3>📁 Sample Medical Images</h3>
+            <p>Click on any sample image to test Gemini explanation:</p>
+            
+            <div class="sample-images">
+                <div class="sample-image" onclick="testSampleImage('/medical-images/mri 1.png')">
+                    <img src="/medical-images/mri 1.png" alt="MRI Brain" onerror="this.style.display='none'">
+                    <p>MRI Brain Scan</p>
+                </div>
+                <div class="sample-image" onclick="testSampleImage('/medical-images/histology 1.png')">
+                    <img src="/medical-images/histology 1.png" alt="Histology" onerror="this.style.display='none'">
+                    <p>Histology Sample</p>
+                </div>
+                <div class="sample-image" onclick="testSampleImage('/medical-images/histology chest.jpg')">
+                    <img src="/medical-images/histology chest.jpg" alt="Chest Histology" onerror="this.style.display='none'">
+                    <p>Chest Histology</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>🔄 Or Upload Your Own Image</h3>
+            <input type="file" id="imageInput" class="file-input" accept="image/*">
+            <button onclick="explainUploadedImage()" class="button" id="uploadBtn">
+                Explain Uploaded Image with Gemini
+            </button>
+        </div>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function testSampleImage(imagePath) {
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                // Show loading
+                resultDiv.innerHTML = `
+                    <div class="result">
+                        <h4><span class="loading"></span>Testing Gemini with sample image...</h4>
+                        <p>Image: ${imagePath}</p>
+                        <p>🔄 Fetching image and sending to Gemini...</p>
+                    </div>
+                `;
+
+                // Fetch the image
+                const response = await fetch(imagePath);
+                if (!response.ok) throw new Error('Failed to fetch image');
+                
+                const blob = await response.blob();
+                const file = new File([blob], imagePath.split('/').pop(), { type: blob.type });
+
+                // Send to Gemini
+                await explainImage(file);
+                
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h4>❌ Error</h4>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function explainUploadedImage() {
+            const fileInput = document.getElementById('imageInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select an image first');
+                return;
+            }
+
+            await explainImage(file);
+        }
+
+        async function explainImage(file) {
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                // Show loading
+                resultDiv.innerHTML = `
+                    <div class="result">
+                        <h4><span class="loading"></span>Gemini AI is analyzing the image...</h4>
+                        <p>File: ${file.name}</p>
+                        <p>✨ Powered by Google Gemini 1.5 Flash</p>
+                    </div>
+                `;
+
+                // Prepare form data
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('query', 'Explain the key medical findings in this image for case discussion. Focus on anatomical structures, any abnormalities, and clinical significance.');
+
+                // Call Gemini API
+                const response = await fetch('http://localhost:8000/explain', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+
+                // Show success result
+                resultDiv.innerHTML = `
+                    <div class="result">
+                        <h4>✅ Gemini Explanation Complete!</h4>
+                        <p><strong>Model:</strong> ${result.source}</p>
+                        <p><strong>Response Time:</strong> ${result.latency_ms}ms</p>
+                        <hr style="border-color: rgba(255,255,255,0.2); margin: 16px 0;">
+                        <h5>🧠 Medical Explanation:</h5>
+                        <div class="explanation-text">${result.explanation}</div>
+                    </div>
+                `;
+
+            } catch (error) {
+                console.error('Gemini explanation failed:', error);
+                
+                let errorMessage = error.message;
+                if (error.message.includes('Failed to fetch')) {
+                    errorMessage = 'Cannot connect to Vision API. Make sure the server is running on port 8000.';
+                }
+
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h4>❌ Gemini Explanation Failed</h4>
+                        <p>${errorMessage}</p>
+                        <p style="margin-top: 12px; font-size: 14px; opacity: 0.8;">
+                            💡 Make sure the Vision API server is running: <code>python start_vision_with_gemini.py</code>
+                        </p>
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html> 

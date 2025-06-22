@@ -1,5 +1,5 @@
 """
-FastAPI server for BiomedCLIP vision analysis
+FastAPI server for BiomedCLIP vision analysis with Gemini integration
 """
 
 import os
@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 import uvicorn
 
 from .inference import classify, classify_with_heatmap
+from .routes.explain import router as explain_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -17,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="BiomedCLIP Vision API",
-    description="Enhanced medical image analysis using BiomedCLIP with comprehensive diagnostic insights",
-    version="2.0.0"
+    description="Enhanced medical image analysis using BiomedCLIP with comprehensive diagnostic insights and Gemini explanations",
+    version="2.1.0"
 )
 
 # Add CORS middleware
@@ -30,15 +31,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include routes
+app.include_router(explain_router, tags=["Gemini Explanations"])
+
 @app.get("/")
 async def root():
     return {
-        "message": "BiomedCLIP Vision API v2.0",
+        "message": "BiomedCLIP Vision API v2.1",
         "status": "active",
         "features": [
             "Enhanced medical image classification",
             "Multi-specialty analysis",
             "Clinical insights generation",
+            "Gemini AI explanations",
             "Image categorization",
             "Confidence scoring",
             "DICOM support"
@@ -50,7 +55,7 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "BiomedCLIP Vision API",
-        "version": "2.0.0"
+        "version": "2.1.0"
     }
 
 @app.post("/predict")
@@ -134,6 +139,7 @@ async def get_capabilities():
             "Primary diagnosis prediction",
             "Multi-specialty analysis", 
             "Clinical insights generation",
+            "Gemini AI explanations",
             "Confidence scoring",
             "Image categorization",
             "Top-5 predictions",

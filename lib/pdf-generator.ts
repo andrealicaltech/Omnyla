@@ -7,10 +7,12 @@ interface PatientReportData {
   vcfAnalysis?: VCFAnalysisResult
   biomarkers?: any[]
   customNotes?: string
+  imageAnalysis?: { [key: string]: any }
+  chatHistory?: any[]
 }
 
 export function generatePatientReport(data: PatientReportData): void {
-  const { patient, vcfAnalysis, biomarkers, customNotes } = data
+  const { patient, vcfAnalysis, biomarkers, customNotes, imageAnalysis, chatHistory } = data
   const doc = new jsPDF()
   
   // Set up fonts and colors
@@ -205,6 +207,56 @@ export function generatePatientReport(data: PatientReportData): void {
         yPos = 30
       }
     })
+  }
+  
+  // Image Analysis Section
+  if (imageAnalysis && Object.keys(imageAnalysis).length > 0) {
+    if (yPos > 180) {
+      doc.addPage();
+      yPos = 30;
+    }
+    yPos += 15;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('Image Analysis Summary', 20, yPos);
+    yPos += 10;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+
+    Object.entries(imageAnalysis).forEach(([imageName, analysis]) => {
+      doc.text(`• ${imageName}: ${analysis.finding} (Confidence: ${(analysis.confidence * 100).toFixed(1)}%)`, 25, yPos);
+      yPos += 8;
+      if (yPos > 250) {
+        doc.addPage();
+        yPos = 30;
+      }
+    });
+  }
+
+  // Chat History / Meeting Transcript
+  if (chatHistory && chatHistory.length > 0) {
+    doc.addPage();
+    yPos = 30;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('Tumor Board Discussion Transcript', 20, yPos);
+    yPos += 10;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+
+    chatHistory.forEach(message => {
+      const prefix = message.sender === 'user' ? 'You:' : `${message.agentName || 'AI'}:`;
+      const content = `${prefix} ${message.content}`;
+      const lines = doc.splitTextToSize(content, 170);
+      lines.forEach((line: string) => {
+        doc.text(line, 20, yPos);
+        yPos += 6;
+        if (yPos > 270) {
+          doc.addPage();
+          yPos = 30;
+        }
+      });
+    });
   }
   
   // Footer with disclaimer

@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useState, useEffect } from "react"
 import Image from "next/image"
-import { Brain, Loader2, AlertCircle, Sparkles, Eye, Cpu, FileSearch, CheckCircle } from "lucide-react"
+import { Brain, Loader2, AlertCircle, Sparkles, Eye, Cpu, FileSearch, CheckCircle, MessageSquare } from "lucide-react"
 import { useVisionAnalysis, urlToFile } from "@/hooks/useVisionAnalysis"
+import { useVisionExplain } from "@/hooks/useVisionExplain"
 import { toast } from "sonner"
 
 interface ImagesTabProps {
@@ -21,6 +22,7 @@ export function ImagesTab({ patient }: ImagesTabProps) {
   const [loadingStage, setLoadingStage] = useState("")
   const [loadingProgress, setLoadingProgress] = useState(0)
   const { analyze, isLoading, error, result, clearResult } = useVisionAnalysis()
+  const { explanation, isLoading: isExplaining, error: explainError, explainImage, clearExplanation } = useVisionExplain()
 
   // Loading stages simulation
   useEffect(() => {
@@ -145,6 +147,33 @@ export function ImagesTab({ patient }: ImagesTabProps) {
     }
   }
 
+  // Handle Gemini explanation of current image
+  const handleExplainImage = async () => {
+    try {
+      clearExplanation()
+      const currentImage = imagesToShow[selectedImage]
+      if (!currentImage) return;
+      
+      // Convert image URL to File object
+      const file = await urlToFile(currentImage.src, currentImage.filename)
+      
+      // Run Gemini explanation
+      await explainImage(file, "Explain the key medical findings in this image for case discussion. Focus on anatomical structures, any abnormalities, and clinical significance.")
+      
+      if (explanation) {
+        toast.success('Gemini explanation complete!', {
+          description: 'Medical explanation available below'
+        })
+      }
+      
+    } catch (err) {
+      console.error('Gemini explanation failed:', err)
+      toast.error('Gemini explanation failed', {
+        description: 'Please try again or check your connection'
+      })
+    }
+  }
+
   return (
     <ScrollArea className="h-full">
       <div className="p-6">
@@ -157,6 +186,12 @@ export function ImagesTab({ patient }: ImagesTabProps) {
               <Badge variant="secondary" className="bg-green-500/20 text-green-400 border-green-500/30">
                 <Brain className="w-3 h-3 mr-1" />
                 AI Analyzed
+              </Badge>
+            )}
+            {explanation && (
+              <Badge variant="secondary" className="bg-purple-500/20 text-purple-400 border-purple-500/30">
+                <MessageSquare className="w-3 h-3 mr-1" />
+                Gemini Explained
               </Badge>
             )}
           </div>
@@ -174,6 +209,20 @@ export function ImagesTab({ patient }: ImagesTabProps) {
                 <Sparkles className="w-4 h-4 mr-2" />
               )}
               Analyze
+            </Button>
+
+            <Button 
+              onClick={() => handleExplainImage()}
+              disabled={isExplaining}
+              size="sm"
+              className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0"
+            >
+              {isExplaining ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <MessageSquare className="w-4 h-4 mr-2" />
+              )}
+              Explain with Gemini
             </Button>
 
             <Tabs value={imageType} onValueChange={setImageType} className="w-auto">
@@ -403,6 +452,101 @@ export function ImagesTab({ patient }: ImagesTabProps) {
                 Click "Analyze" to run AI analysis on the current image using BiomedCLIP. 
                 This will classify the medical condition and provide confidence scores.
               </p>
+            )}
+          </div>
+
+          {/* Gemini Explanation Section */}
+          <div className="bg-gradient-to-br from-purple-900/20 to-pink-900/20 rounded-lg p-4 border border-purple-500/30">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-medium text-white/90 flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-purple-400" />
+                Gemini AI Explanation
+              </h4>
+              {isExplaining && (
+                <div className="flex items-center gap-2 text-xs text-white/50">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Generating explanation...
+                </div>
+              )}
+            </div>
+
+            {/* Gemini Loading Animation */}
+            {isExplaining && (
+              <div className="space-y-4 mb-4">
+                <div className="bg-purple-900/20 rounded-lg p-4 border border-purple-500/20">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="relative">
+                      <MessageSquare className="w-5 h-5 text-purple-400 animate-pulse" />
+                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-pink-400 rounded-full animate-ping"></div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-white/90">Gemini AI Analysis</p>
+                      <p className="text-xs text-white/60">Generating medical explanation...</p>
+                    </div>
+                  </div>
+                  
+                  {/* Gemini Processing Animation */}
+                  <div className="w-full bg-purple-900/30 rounded-full h-2 mb-3 overflow-hidden">
+                    <div className="bg-gradient-to-r from-purple-400 to-pink-400 h-2 rounded-full animate-pulse"></div>
+                  </div>
+                  
+                  <p className="text-xs text-purple-300">
+                    ✨ Powered by Google Gemini 1.5 Flash
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {explainError && (
+              <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg mb-3">
+                <AlertCircle className="w-4 h-4 text-red-400" />
+                <div>
+                  <p className="text-sm text-red-400">{explainError}</p>
+                </div>
+              </div>
+            )}
+
+            {explanation ? (
+              <div className="space-y-4">
+                <div className="bg-purple-900/20 rounded-lg p-4 border border-purple-500/20">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-purple-400" />
+                      <span className="text-sm font-medium text-purple-300">Medical Explanation</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="border-purple-400/30 text-purple-300 text-xs">
+                        {explanation.source}
+                      </Badge>
+                      <Badge variant="outline" className="border-green-500/30 text-green-400 text-xs">
+                        {explanation.latency_ms}ms
+                      </Badge>
+                    </div>
+                  </div>
+                  
+                  <div className="prose prose-sm max-w-none">
+                    <p className="text-white/90 leading-relaxed text-sm">
+                      {explanation.explanation}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-purple-500/20">
+                  <p className="text-xs text-purple-300/70">
+                    🧠 AI explanation powered by Google Gemini - natural language medical analysis for case discussions.
+                  </p>
+                </div>
+              </div>
+            ) : !isExplaining && !explainError && (
+              <div className="text-center py-6">
+                <MessageSquare className="w-8 h-8 text-purple-400/50 mx-auto mb-2" />
+                <p className="text-sm text-white/70 mb-1">
+                  Click "Explain with Gemini" to get natural language medical explanation
+                </p>
+                <p className="text-xs text-purple-300/60">
+                  Perfect for case discussions and educational purposes
+                </p>
+              </div>
             )}
           </div>
         </div>

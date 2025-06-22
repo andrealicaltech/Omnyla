@@ -26,6 +26,8 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import Anthropic from '@anthropic-ai/sdk';
 import { v4 as uuidv4 } from 'uuid';
 import Vapi from "@vapi-ai/web";
+import { generatePatientReport } from '@/lib/pdf-generator';
+import { FloatingVoiceControl } from "./FloatingVoiceControl";
 
 interface CustomWindow extends Window {
   webkitSpeechRecognition: any;
@@ -96,6 +98,8 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
   // Vapi Voice Conversation State
   const [isVoiceConversationActive, setIsVoiceConversationActive] = useState(false)
   const [isAISpeaking, setIsAISpeaking] = useState(false)
+  const [meetingNotes, setMeetingNotes] = useState<string>('')
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
   const vapiRef = useRef<Vapi | null>(null)
 
   const recognitionRef = useRef<any>(null)
@@ -695,6 +699,36 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
     }
   ]
 
+  // Patient data for Jane Doe, conforming to the Patient type
+  const janeDoePatient: Patient = {
+      id: "PAT-001",
+      name: "Jane Doe",
+      dob: "1960-01-15",
+      mrn: "MRN-98765",
+      caseId: "CASE-JD-001",
+      age: 64,
+      sex: "Female",
+      diagnosis: "Glioblastoma, IDH-wildtype",
+      tumor_stage: 4,
+      case_overview: {
+        summary: "64-year-old female with progressive headaches. MRI reveals a right temporal lobe enhancing mass consistent with high-grade glioma.",
+        timeline: [
+          { date: "2024-05-10", event: "Initial Diagnosis via MRI" },
+          { date: "2024-05-20", event: "Surgical Resection" },
+          { date: "2024-06-01", event: "Began Chemoradiation" },
+        ]
+      },
+      biomarkers: [
+        { name: "MGMT promoter", result: "Unmethylated", status: "Negative" },
+        { name: "IDH1", result: "Wild-type", status: "Negative" },
+        { name: "ATRX", result: "Retained", status: "Positive" },
+      ],
+      imaging: [],
+      reports: [],
+  };
+  
+  const patientToUse = patient.name === 'Jane Doe' ? janeDoePatient : patient;
+
   // Initialize Vapi
   useEffect(() => {
     const vapiKey = process.env.NEXT_PUBLIC_VAPI_API_KEY;
@@ -706,6 +740,8 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
         console.log('✅ Vapi call started successfully');
         setIsVoiceConversationActive(true);
         setIsAISpeaking(false);
+        setMeetingNotes(''); // Clear any previous meeting notes
+        setIsGeneratingSummary(false); // Clear loading state
         setError(''); // Clear any previous errors
       });
 
@@ -713,6 +749,11 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
         console.log('📞 Vapi call ended:', endData);
         setIsVoiceConversationActive(false);
         setIsAISpeaking(false);
+        
+        // Generate meeting summary when call ends
+        if (messages.length > 0) {
+          generateMeetingSummary();
+        }
         
         // Handle different end reasons
         if (endData?.reason) {
@@ -960,6 +1001,8 @@ Use professional language and clear formatting.`,
   }
 
   // Voice Conversation Functions
+  const [isStartingVoice, setIsStartingVoice] = useState(false);
+
   const startVoiceConversation = async () => {
     console.log('🎤 Starting voice conversation...');
     
@@ -973,34 +1016,44 @@ Use professional language and clear formatting.`,
       return;
     }
     
+    setIsStartingVoice(true);
+
+    console.log('📋 Building patient context for Vapi...');
+    const patientContext = `
+      # Patient Information
+      - Name: ${patientToUse.name}
+      - Age: ${patientToUse.age}
+      - Sex: ${patientToUse.sex}
+      - Diagnosis: ${patientToUse.diagnosis}
+      - Stage: ${patientToUse.tumor_stage}
+
+      # Case Summary
+      ${patientToUse.case_overview?.summary || 'No summary available'}
+
+      # Key Biomarkers
+      ${patientToUse.biomarkers?.map(b => `- ${b.name}: ${b.result} (${b.status})`).join('\n') || 'No biomarkers available'}
+    `.trim();
+
     const assistantId = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID;
     if (!assistantId) {
-      console.error('❌ Vapi Assistant ID is not configured.');
+      console.error("Vapi Assistant ID is not configured.");
       setError("Vapi Assistant ID is not configured.");
+      setIsStartingVoice(false);
       return;
     }
-
-    console.log('📋 Building patient context...');
-    const patientContext = `
-Patient: ${patient.name || 'Unknown'}, Age: ${patient.age || 'Unknown'}, Sex: ${patient.sex || 'Unknown'}
-Diagnosis: ${patient.diagnosis || 'Unknown'}
-Stage: ${patient.tumor_stage || 'Unknown'}
-Case Summary: ${patient.case_overview?.summary || 'No summary available'}
-Key Biomarkers: ${patient.biomarkers?.map((b: any) => `${b.name}: ${b.result}`).join(', ') || 'No biomarkers available'}
-    `.trim();
     
-    console.log('🚀 Starting Vapi conversation with Assistant ID only (no overrides)...');
-    console.log('📞 Vapi instance:', vapiRef.current ? 'Ready' : 'Not initialized');
+    console.log('🚀 Starting Vapi conversation...');
     
     try {
       setError('');
-      // Diagnostic step: Call the assistant by ID without any overrides.
-      // This will confirm if the overrides are the source of the ejection issue.
+      // Simple start call - the assistant should have the context configured in Vapi dashboard
       vapiRef.current?.start(assistantId);
       console.log('✅ Vapi start called successfully');
     } catch (error) {
       console.error('❌ Error starting Vapi:', error);
       setError(`Failed to start voice conversation: ${error}`);
+    } finally {
+      setIsStartingVoice(false);
     }
   };
 
@@ -1008,10 +1061,7 @@ Key Biomarkers: ${patient.biomarkers?.map((b: any) => `${b.name}: ${b.result}`).
     console.log('🛑 Stopping voice conversation...');
     try {
       vapiRef.current?.stop();
-      setIsVoiceConversationActive(false);
-      setIsAISpeaking(false);
-      setError(''); // Clear any errors
-      console.log('✅ Voice conversation stopped successfully');
+      // The on 'conversation-end' event will handle state changes
     } catch (error) {
       console.error('❌ Error stopping voice conversation:', error);
     }
@@ -1024,6 +1074,72 @@ Key Biomarkers: ${patient.biomarkers?.map((b: any) => `${b.name}: ${b.result}`).
       vapiRef.current?.say(text);
     } catch (error) {
       console.error('Failed to speak AI response:', error);
+    }
+  };
+
+  const generateMeetingSummary = async () => {
+    console.log('📝 Generating meeting summary...');
+    setIsGeneratingSummary(true);
+    
+    try {
+      // Get all messages from the voice session
+      const conversationHistory = messages
+        .map(m => `${m.agentName || m.sender}: ${m.content}`)
+        .join('\n');
+
+      const anthropic = new Anthropic({
+        apiKey: process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY,
+        dangerouslyAllowBrowser: true,
+      });
+
+      const msg = await anthropic.messages.create({
+        model: 'claude-3-5-sonnet-20240620', // Using Claude 4 (latest)
+        max_tokens: 2000,
+        temperature: 0.3,
+        system: `You are a medical meeting summarizer. Create a comprehensive tumor board meeting summary based on the patient discussion and AI specialist recommendations.
+
+        Patient Context:
+        - Name: ${patient.name}
+        - Age: ${patient.age}
+        - Sex: ${patient.sex}
+        - Diagnosis: ${patient.diagnosis}
+        - Stage: ${patient.tumor_stage}
+        
+        Generate a professional medical meeting summary that includes:
+        1. Meeting Overview
+        2. Key Discussion Points
+        3. AI Specialist Recommendations
+        4. Treatment Decisions
+        5. Next Steps & Follow-up
+        
+        Format the summary clearly for medical documentation.`,
+        messages: [
+          {
+            role: 'user',
+            content: `Please create a comprehensive tumor board meeting summary based on this conversation:
+
+${conversationHistory}
+
+Focus on the medical decisions, treatment recommendations, and key insights discussed during the voice session.`
+          }
+        ],
+      });
+
+      const summaryText = msg.content
+        .map(block => ('text' in block ? block.text : ''))
+        .join('');
+
+      if (summaryText) {
+        // Set the meeting notes for the voice control UI
+        setMeetingNotes(summaryText.trim());
+        console.log('✅ Meeting summary generated successfully');
+      }
+
+    } catch (error) {
+      console.error('❌ Failed to generate meeting summary:', error);
+      setMeetingNotes('Failed to generate meeting summary. Please try again.');
+    } finally {
+      setIsGeneratingSummary(false);
     }
   };
 
@@ -1220,6 +1336,13 @@ Key Biomarkers: ${patient.biomarkers?.map((b: any) => `${b.name}: ${b.result}`).
     )
   }
 
+  const [sessionStarted, setSessionStarted] = useState(false);
+
+  const handleStartSession = async () => {
+    await startVoiceConversation();
+    setSessionStarted(true);
+  };
+
   if (presentationMode) {
     const selectedInsights = quickInsights.filter(i => i.selected)
     const selectedTabs = leanTabs.filter(t => t.selected)
@@ -1382,39 +1505,22 @@ Key Biomarkers: ${patient.biomarkers?.map((b: any) => `${b.name}: ${b.result}`).
               {error}
             </div>
           )}
-          <div className="flex items-center gap-2">
-            <Textarea
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Ask the AI specialists..."
-              className="flex-1 bg-[#1a1a30] border-white/20 text-white/90 resize-none text-xs"
-              rows={2}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSendMessage()
-                }
-              }}
-            />
-            <div className="flex flex-col gap-1">
-              <Button 
-                size="sm" 
-                onClick={isVoiceConversationActive ? stopVoiceConversation : startVoiceConversation}
-                className={cn(
-                  "h-8 w-8 p-0",
-                  isVoiceConversationActive 
-                    ? "bg-red-500 hover:bg-red-600" 
-                    : "bg-green-500 hover:bg-green-600"
-                )}
-                title={isVoiceConversationActive ? "Stop voice conversation" : "Start voice conversation"}
-              >
-                {isVoiceConversationActive ? (
-                  <Square className="w-3 h-3" />
-                ) : (
-                  <Mic className="w-3 h-3" />
-                )}
-              </Button>
-              <Button size="sm" onClick={handleSendMessage} className="h-8 w-8 p-0 bg-[#4a6bff] hover:bg-[#3a5bef]">
+          <div className="flex items-center gap-2 w-full">
+            <div className="relative w-full">
+              <Textarea
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder="Ask the AI specialists..."
+                className="w-full bg-[#1a1a30] border-white/20 text-white/90 resize-none text-sm pr-12"
+                rows={2}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    handleSendMessage()
+                  }
+                }}
+              />
+              <Button size="sm" onClick={handleSendMessage} className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 p-0 bg-[#4a6bff] hover:bg-[#3a5bef]">
                 <Send className="w-3 h-3" />
               </Button>
             </div>
@@ -1588,85 +1694,14 @@ Key Biomarkers: ${patient.biomarkers?.map((b: any) => `${b.name}: ${b.result}`).
         </div>
       </main>
 
-      {/* Floating Voice Recorder Interface */}
-      {showVoiceRecorder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-gradient-to-br from-purple-900 via-blue-900 to-purple-900 rounded-3xl p-8 max-w-lg w-full mx-4 border border-white/20 shadow-2xl max-h-[90vh] flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <Brain className="w-8 h-8 text-cyan-400" />
-                  <Sparkles className="w-4 h-4 text-purple-400 absolute -top-1 -right-1 animate-pulse" />
-                </div>
-                <h3 className="text-xl font-bold text-white">Neural Voice Recorder</h3>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  // Close panel but keep recording if recording is active
-                  setShowVoiceRecorder(false)
-                }}
-                className="text-white/70 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </Button>
-            </div>
-
-            {/* Recording Interface */}
-            <div className="text-center mb-6 flex-shrink-0">
-              {/* Recording Timer */}
-              <div className="mb-4">
-                <div className="text-2xl font-mono text-cyan-400 font-bold">
-                  {formatTime(recordingTime)}
-                </div>
-                <div className="text-sm text-white/60 mt-1">Recording Time</div>
-              </div>
-
-              {/* Recording Button */}
-              <div className="relative mb-6">
-                <Button
-                  onClick={isRecording ? stopRecording : startRecording}
-                  disabled={isProcessing}
-                  className={cn(
-                    "w-24 h-24 rounded-full text-white font-semibold transition-all duration-300 relative overflow-hidden",
-                    isRecording
-                      ? "bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 animate-pulse shadow-lg shadow-red-500/30"
-                      : "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 hover:scale-105 shadow-lg shadow-cyan-500/30"
-                  )}
-                >
-                  {isRecording ? (
-                    <Square className="w-8 h-8" />
-                  ) : (
-                    <Mic className="w-8 h-8" />
-                  )}
-                  
-                  {/* Pulse animation */}
-                  {isRecording && (
-                    <div className="absolute inset-0 rounded-full border-4 border-white/30 animate-ping" />
-                  )}
-                </Button>
-
-                {/* Audio Level Visualization */}
-                {isRecording && (
-                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 flex gap-1">
-                    {[...Array(6)].map((_, i) => (
-                      <div
-                        key={i}
-                        className="w-1.5 bg-gradient-to-t from-cyan-500 to-blue-500 rounded-full transition-all duration-150"
-                        style={{
-                          height: `${Math.max(3, audioLevel * 30 + Math.random() * 8)}px`
-                        }}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <FloatingVoiceControl 
+        isRecording={isVoiceConversationActive}
+        isStarting={isStartingVoice}
+        onStart={startVoiceConversation}
+        onStop={stopVoiceConversation}
+        meetingNotes={meetingNotes}
+        isGeneratingSummary={isGeneratingSummary}
+      />
     </div>
   )
 }

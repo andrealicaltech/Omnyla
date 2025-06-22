@@ -29,7 +29,7 @@ export default function DashboardPage() {
       <div className="w-full max-w-7xl mx-auto p-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center">
-            <h1 className="text-xl font-semibold text-white/90">Omnyla v0.8.0</h1>
+            <h1 className="text-xl font-semibold text-white/90">Omnyla</h1>
             {isBoardMode && (
               <span className="ml-2 px-2 py-1 bg-[#4a6bff] text-white text-xs rounded">
                 BOARD MODE
