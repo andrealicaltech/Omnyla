@@ -20,47 +20,40 @@ export default function LandingPage() {
   if (!mounted) return null
 
   return (
-    <div className="min-h-screen w-full overflow-hidden relative bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900">
-      {/* Animated background elements */}
+    <div className="min-h-screen w-full overflow-hidden relative bg-gradient-to-br from-blue-950 via-purple-950 to-black">
+      {/* Bokeh background effect */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-500/10 rounded-full blur-3xl animate-pulse delay-2000"></div>
-        
-        {/* Floating particles */}
-        <div className="absolute top-20 left-20 w-2 h-2 bg-blue-400/60 rounded-full animate-bounce delay-1000"></div>
-        <div className="absolute top-40 right-32 w-3 h-3 bg-purple-400/60 rounded-full animate-bounce delay-2000"></div>
-        <div className="absolute bottom-32 left-1/3 w-2 h-2 bg-cyan-400/60 rounded-full animate-bounce delay-3000"></div>
-        <div className="absolute bottom-20 right-20 w-4 h-4 bg-pink-400/60 rounded-full animate-bounce"></div>
-      </div>
-
-      {/* Grid overlay */}
-      <div className="absolute inset-0 opacity-[0.02]">
-        <div className="absolute inset-0" style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M30 30c0-11 9-20 20-20s20 9 20 20-9 20-20 20-20-9-20-20zm0 0c0 11-9 20-20 20s-20-9-20-20 9-20 20-20 20 9 20 20z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-        }}></div>
+        <div className="absolute top-[-10%] left-[10%] w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-[5%] right-[5%] w-80 h-80 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }}></div>
+        <div className="absolute bottom-[20%] left-[25%] w-72 h-72 bg-indigo-500/05 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '4s' }}></div>
       </div>
 
       {/* Content */}
       <div className="relative z-10 min-h-screen flex flex-col">
         {/* Header - Simplified */}
         <header className="flex items-center justify-between p-6 lg:p-8">
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
             {/* Professional Company Logo */}
             <div className="relative">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center shadow-lg">
+              <div className="w-12 h-12 bg-gradient-to-br from-sky-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
                 <div className="w-7 h-7 bg-white rounded-md flex items-center justify-center">
-                  <div className="w-4 h-4 bg-gradient-to-br from-blue-600 to-blue-700 rounded-sm"></div>
+                  <div className="w-4 h-4 bg-gradient-to-br from-sky-500 to-blue-600 rounded-sm"></div>
                 </div>
               </div>
             </div>
-            <span className="text-white font-bold text-xl">
+            <span className="text-white font-bold text-2xl">
               Omnyla
             </span>
           </div>
           
-          {/* Empty div to maintain layout */}
-          <div></div>
+          <div className="flex items-center space-x-4">
+            <Button variant="ghost" onClick={() => router.push('/signup')} className="text-white hover:bg-white/10">
+              Sign Up
+            </Button>
+            <Button variant="ghost" onClick={() => router.push('/login')} className="text-white hover:bg-white/10">
+              Log In
+            </Button>
+          </div>
         </header>
 
         {/* Main Content */}
@@ -68,12 +61,12 @@ export default function LandingPage() {
           {/* Hero Section */}
           <div className="max-w-7xl mx-auto mb-16">
 
-            <h2 className="text-2xl md:text-3xl font-bold mb-4 bg-gradient-to-r from-purple-400 to-blue-500 bg-clip-text text-transparent">
+            <h2 className="text-6xl md:text-8xl font-bold mb-4 bg-gradient-to-r from-sky-300 to-white bg-clip-text text-transparent">
               Omnyla
             </h2>
 
-            <p className="text-4xl md:text-6xl font-bold text-white/95 max-w-5xl mx-auto leading-tight mb-12">
-              Your AI-powered medical assistant for precision healthcare and genomic analysis
+            <p className="text-xl md:text-2xl font-light text-white max-w-3xl mx-auto leading-relaxed mb-12">
+              AI Copilot for Cancer Teams
             </p>
 
             {/* Enhanced CTA Button */}

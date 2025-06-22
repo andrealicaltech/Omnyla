@@ -36,25 +36,12 @@ export default function LoginPage() {
   if (!mounted) return null
 
   return (
-    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900">
-      {/* Animated background elements */}
+    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-blue-950 via-purple-950 to-black">
+      {/* Bokeh background effect */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-500/10 rounded-full blur-3xl animate-pulse delay-2000"></div>
-        
-        {/* Floating particles */}
-        <div className="absolute top-20 left-20 w-2 h-2 bg-blue-400/60 rounded-full animate-bounce delay-1000"></div>
-        <div className="absolute top-40 right-32 w-3 h-3 bg-purple-400/60 rounded-full animate-bounce delay-2000"></div>
-        <div className="absolute bottom-32 left-1/3 w-2 h-2 bg-cyan-400/60 rounded-full animate-bounce delay-3000"></div>
-        <div className="absolute bottom-20 right-20 w-4 h-4 bg-pink-400/60 rounded-full animate-bounce"></div>
-      </div>
-
-      {/* Grid overlay */}
-      <div className="absolute inset-0 opacity-[0.02]">
-        <div className="absolute inset-0" style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M30 30c0-11 9-20 20-20s20 9 20 20-9 20-20 20-20-9-20-20zm0 0c0 11-9 20-20 20s-20-9-20-20 9-20 20-20 20 9 20 20z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-        }}></div>
+        <div className="absolute top-[-10%] left-[10%] w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-[5%] right-[5%] w-80 h-80 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }}></div>
+        <div className="absolute bottom-[20%] left-[25%] w-72 h-72 bg-indigo-500/05 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '4s' }}></div>
       </div>
 
       {/* Content */}
@@ -70,15 +57,16 @@ export default function LoginPage() {
             <span>Back to Home</span>
           </Button>
 
-          <div className="flex items-center space-x-4">
-            {/* Enhanced Logo */}
+          <div className="flex items-center space-x-2">
+            {/* Professional Company Logo */}
             <div className="relative">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-xl shadow-blue-500/25">
-                <Sparkles className="w-5 h-5 text-white" />
+              <div className="w-12 h-12 bg-gradient-to-br from-sky-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                <div className="w-7 h-7 bg-white rounded-md flex items-center justify-center">
+                  <div className="w-4 h-4 bg-gradient-to-br from-sky-500 to-blue-600 rounded-sm"></div>
+                </div>
               </div>
-              <div className="absolute -inset-0.5 bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 rounded-xl blur opacity-30"></div>
             </div>
-            <span className="text-white font-bold text-lg bg-gradient-to-r from-white via-blue-100 to-purple-100 bg-clip-text text-transparent">
+            <span className="text-white font-bold text-2xl">
               Omnyla
             </span>
           </div>
@@ -97,10 +85,8 @@ export default function LoginPage() {
 
                 {/* Header */}
                 <div className="text-center mb-8">
-                  <h1 className="text-4xl font-black mb-3">
-                    <span className="bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent">
-                      Welcome Back
-                    </span>
+                  <h1 className="text-4xl font-black mb-3 text-white">
+                    Welcome Back
                   </h1>
                   <p className="text-white/70 text-lg font-light">
                     Sign in to your Omnyla account
