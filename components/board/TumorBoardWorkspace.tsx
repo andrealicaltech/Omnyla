@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { DecisionPad } from './DecisionPad'
 import { SessionTimer } from './SessionTimer'
 import { useBoardMode } from './BoardModeContext'
@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import Anthropic from '@anthropic-ai/sdk';
 import { v4 as uuidv4 } from 'uuid';
+import Vapi from "@vapi-ai/web";
 
 interface CustomWindow extends Window {
   webkitSpeechRecognition: any;
@@ -91,6 +92,11 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
   const [recordingTime, setRecordingTime] = useState(0)
   const [audioLevel, setAudioLevel] = useState(0)
   const [error, setError] = useState('')
+
+  // Vapi Voice Conversation State
+  const [isVoiceConversationActive, setIsVoiceConversationActive] = useState(false)
+  const [isAISpeaking, setIsAISpeaking] = useState(false)
+  const vapiRef = useRef<Vapi | null>(null)
 
   const recognitionRef = useRef<any>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -689,13 +695,99 @@ export function TumorBoardWorkspace({ patient }: TumorBoardWorkspaceProps) {
     }
   ]
 
+  // Initialize Vapi
   useEffect(() => {
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-      if (animationRef.current) cancelAnimationFrame(animationRef.current)
-      if (audioContextRef.current) audioContextRef.current.close()
+    const vapiKey = process.env.NEXT_PUBLIC_VAPI_API_KEY;
+    if (vapiKey) {
+      const vapiInstance = new Vapi(vapiKey);
+      vapiRef.current = vapiInstance;
+
+      vapiInstance.on('call-start', () => {
+        console.log('✅ Vapi call started successfully');
+        setIsVoiceConversationActive(true);
+        setIsAISpeaking(false);
+        setError(''); // Clear any previous errors
+      });
+
+      vapiInstance.on('call-end', (endData?: any) => {
+        console.log('📞 Vapi call ended:', endData);
+        setIsVoiceConversationActive(false);
+        setIsAISpeaking(false);
+        
+        // Handle different end reasons
+        if (endData?.reason) {
+          console.log('📞 Call end reason:', endData.reason);
+          
+          if (endData.reason === 'user-ended') {
+            console.log('✅ User ended the call normally');
+          } else if (endData.reason === 'assistant-ended') {
+            console.log('🤖 Assistant ended the call');
+          } else if (endData.reason === 'pipeline-error-openai-voice-failed') {
+            setError('Voice service temporarily unavailable. Please try again.');
+          } else if (endData.reason === 'pipeline-error-exceeded-max-duration') {
+            setError('Call duration limit reached. Please start a new conversation.');
+          } else if (endData.reason === 'pipeline-error-exceeded-silence-timeout') {
+            setError('Call ended due to silence. Please start a new conversation.');
+          } else if (endData.reason.includes('ejection')) {
+            console.log(' कॉल निकाल दी गई।');
+            setError('Connection lost. This can happen due to network issues or assistant configuration. Please try again.');
+          } else {
+            setError(`Call ended: ${endData.reason}. Please try again.`);
+          }
+        }
+      });
+
+      vapiInstance.on('speech-start', () => {
+        console.log('🗣️ AI started speaking');
+        setIsAISpeaking(true);
+      });
+      
+      vapiInstance.on('speech-end', () => {
+        console.log('🤐 AI stopped speaking');
+        setIsAISpeaking(false);
+      });
+
+      vapiInstance.on('message', (message) => {
+        console.log('📨 Vapi message:', message);
+        
+        if (message.type === 'transcript' && message.role === 'user' && message.transcript) {
+          const userMessage: Message = {
+            id: uuidv4(),
+            sender: "user",
+            content: message.transcript,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, userMessage]);
+        } else if (message.type === 'assistant_message' && message.message) {
+           const botMessage: Message = {
+            id: message.id || uuidv4(),
+            sender: "bot",
+            agentName: "Dr. AI Assistant",
+            content: message.message.content,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, botMessage]);
+        }
+      });
+      
+      vapiInstance.on('error', (error) => {
+        console.error('❌ Vapi Error Object:', error);
+        try {
+          console.error('❌ Vapi Error (JSON):', JSON.stringify(error, null, 2));
+        } catch {
+          console.error('❌ Vapi Error could not be stringified.');
+        }
+        const errorMessage = error?.message || (typeof error === 'object' && Object.keys(error).length > 0 ? `Received non-standard error object: ${JSON.stringify(error)}` : 'Unknown error. The error object was empty.');
+        setError(`Voice error: ${errorMessage}. Please check microphone permissions and try again.`);
+        setIsVoiceConversationActive(false);
+      });
+
     }
-  }, [])
+    
+    return () => {
+      vapiRef.current?.stop();
+    }
+  }, []);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -867,6 +959,74 @@ Use professional language and clear formatting.`,
     }
   }
 
+  // Voice Conversation Functions
+  const startVoiceConversation = async () => {
+    console.log('🎤 Starting voice conversation...');
+    
+    // Check microphone permissions first
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('🎙️ Microphone access granted');
+    } catch (micError) {
+      console.error('🚫 Microphone access denied:', micError);
+      setError('Microphone access denied. Please allow microphone permissions and try again.');
+      return;
+    }
+    
+    const assistantId = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID;
+    if (!assistantId) {
+      console.error('❌ Vapi Assistant ID is not configured.');
+      setError("Vapi Assistant ID is not configured.");
+      return;
+    }
+
+    console.log('📋 Building patient context...');
+    const patientContext = `
+Patient: ${patient.name || 'Unknown'}, Age: ${patient.age || 'Unknown'}, Sex: ${patient.sex || 'Unknown'}
+Diagnosis: ${patient.diagnosis || 'Unknown'}
+Stage: ${patient.tumor_stage || 'Unknown'}
+Case Summary: ${patient.case_overview?.summary || 'No summary available'}
+Key Biomarkers: ${patient.biomarkers?.map((b: any) => `${b.name}: ${b.result}`).join(', ') || 'No biomarkers available'}
+    `.trim();
+    
+    console.log('🚀 Starting Vapi conversation with Assistant ID only (no overrides)...');
+    console.log('📞 Vapi instance:', vapiRef.current ? 'Ready' : 'Not initialized');
+    
+    try {
+      setError('');
+      // Diagnostic step: Call the assistant by ID without any overrides.
+      // This will confirm if the overrides are the source of the ejection issue.
+      vapiRef.current?.start(assistantId);
+      console.log('✅ Vapi start called successfully');
+    } catch (error) {
+      console.error('❌ Error starting Vapi:', error);
+      setError(`Failed to start voice conversation: ${error}`);
+    }
+  };
+
+  const stopVoiceConversation = () => {
+    console.log('🛑 Stopping voice conversation...');
+    try {
+      vapiRef.current?.stop();
+      setIsVoiceConversationActive(false);
+      setIsAISpeaking(false);
+      setError(''); // Clear any errors
+      console.log('✅ Voice conversation stopped successfully');
+    } catch (error) {
+      console.error('❌ Error stopping voice conversation:', error);
+    }
+  };
+
+  const speakAIResponse = async (text: string) => {
+    if (!isVoiceConversationActive) return;
+
+    try {
+      vapiRef.current?.say(text);
+    } catch (error) {
+      console.error('Failed to speak AI response:', error);
+    }
+  };
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
@@ -958,10 +1118,10 @@ Use professional language and clear formatting.`,
       - Stage: ${patient.tumor_stage}
 
       # Case Overview
-      ${patient.case_overview.summary}
+      ${patient.case_overview?.summary || 'No case overview available'}
 
       # Biomarkers
-      ${patient.biomarkers.map((b: { name: string; result: string; status: string; }) => `- ${b.name}: ${b.result} (Status: ${b.status})`).join('\n')}
+      ${patient.biomarkers?.map((b: { name: string; result: string; status: string; }) => `- ${b.name}: ${b.result} (Status: ${b.status})`).join('\n') || 'No biomarkers available'}
 
       # Image Analysis Results
       ${Object.entries(analysisResults).map(([image, result]) => 
@@ -1003,14 +1163,19 @@ Use professional language and clear formatting.`,
         const [agentName, ...contentParts] = responseText.split(': ');
         const content = contentParts.join(': ');
 
-        const botMessage = {
-          id: uuidv4(),
-          sender: "bot" as const,
-          agentName: agentName || "Dr. AI Assistant",
-          content: content.trim(),
-          timestamp: new Date(),
-        }
-        setMessages(prev => [...prev, botMessage])
+              const botMessage = {
+        id: uuidv4(),
+        sender: "bot" as const,
+        agentName: agentName || "Dr. AI Assistant",
+        content: content.trim(),
+        timestamp: new Date(),
+      }
+      setMessages(prev => [...prev, botMessage])
+
+      // Speak the AI response if voice conversation is not active
+      if (!isVoiceConversationActive && vapiRef.current) {
+        await speakAIResponse(content.trim());
+      }
       } else {
         throw new Error('No text content in response from Anthropic');
       }
@@ -1212,6 +1377,11 @@ Use professional language and clear formatting.`,
 
         {/* Chat Input */}
         <div className="p-4 border-t border-white/10">
+          {error && (
+            <div className="mb-2 p-2 bg-red-500/20 border border-red-500/30 rounded text-red-400 text-xs">
+              {error}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <Textarea
               value={chatInput}
@@ -1227,6 +1397,23 @@ Use professional language and clear formatting.`,
               }}
             />
             <div className="flex flex-col gap-1">
+              <Button 
+                size="sm" 
+                onClick={isVoiceConversationActive ? stopVoiceConversation : startVoiceConversation}
+                className={cn(
+                  "h-8 w-8 p-0",
+                  isVoiceConversationActive 
+                    ? "bg-red-500 hover:bg-red-600" 
+                    : "bg-green-500 hover:bg-green-600"
+                )}
+                title={isVoiceConversationActive ? "Stop voice conversation" : "Start voice conversation"}
+              >
+                {isVoiceConversationActive ? (
+                  <Square className="w-3 h-3" />
+                ) : (
+                  <Mic className="w-3 h-3" />
+                )}
+              </Button>
               <Button size="sm" onClick={handleSendMessage} className="h-8 w-8 p-0 bg-[#4a6bff] hover:bg-[#3a5bef]">
                 <Send className="w-3 h-3" />
               </Button>
@@ -1249,6 +1436,18 @@ Use professional language and clear formatting.`,
                   <span>Session: {Math.floor(sessionTimer / 60).toString().padStart(2, '0')}:{(sessionTimer % 60).toString().padStart(2, '0')}</span>
                   <span>Attendees: {attendees.length}</span>
                   <span>AI Agents: 5 Active</span>
+                  {isVoiceConversationActive && (
+                    <span className="text-green-400 flex items-center gap-1">
+                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                      Voice Active
+                    </span>
+                  )}
+                  {isAISpeaking && (
+                    <span className="text-blue-400 flex items-center gap-1">
+                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+                      AI Speaking
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

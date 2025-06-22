@@ -45,6 +45,7 @@
     "@turf/distance": "^7.2.0",
     "@turf/helpers": "^7.2.0",
     "@types/uuid": "^10.0.0",
+    "@vapi-ai/web": "^2.3.6",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
