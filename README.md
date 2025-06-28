@@ -1,4 +1,4 @@
-# Nila Genomics - AI-Powered Genomic Analysis Platform
+# Omnyla - AI Copilot for Cancer Care Teams
 
 A comprehensive genomic analysis platform featuring AI-powered pathology assistance, tumor board collaboration, and pharmacogenomic insights for precision medicine.
 
